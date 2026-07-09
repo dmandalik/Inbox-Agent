@@ -13,6 +13,9 @@ wired to its implementation in subsequent commits.
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Annotated
+
 import typer
 
 from inbox_agent import __version__
@@ -38,9 +41,41 @@ def version() -> None:
 
 
 @app.command("generate-data")
-def generate_data() -> None:
+def generate_data(
+    seed: Annotated[int, typer.Option(help="Seed for the deterministic generator.")] = 1337,
+    corpus: Annotated[
+        Path | None,
+        typer.Option(help="Corpus JSONL output path (default: data/synthetic/corpus.jsonl)."),
+    ] = None,
+    golden: Annotated[
+        Path | None,
+        typer.Option(help="Golden labels JSONL output path (default: data/golden/labels.jsonl)."),
+    ] = None,
+) -> None:
     """Generate a synthetic email corpus into data/synthetic/."""
-    typer.echo(_PENDING)
+    from inbox_agent.synthetic import (
+        DEFAULT_CORPUS_PATH,
+        DEFAULT_GOLDEN_PATH,
+        generate_corpus,
+        write_corpus,
+    )
+    from inbox_agent.triage import CATEGORIES
+
+    emails = generate_corpus(seed=seed)
+    corpus_path, golden_path = write_corpus(
+        emails,
+        corpus_path=corpus or DEFAULT_CORPUS_PATH,
+        golden_path=golden or DEFAULT_GOLDEN_PATH,
+    )
+    counts = dict.fromkeys(CATEGORIES, 0)
+    for e in emails:
+        if e.category in counts:
+            counts[e.category] += 1
+    typer.echo(f"Generated {len(emails)} synthetic emails (seed={seed}).")
+    for cat in CATEGORIES:
+        typer.echo(f"  {cat:<14} {counts[cat]}")
+    typer.echo(f"Corpus:  {corpus_path}")
+    typer.echo(f"Labels:  {golden_path}")
 
 
 @app.command()
