@@ -1,0 +1,50 @@
+# ==========================================================================
+# CI — second gate behind local pre-commit hooks.
+#   * gitleaks scans the FULL history for secrets (fetch-depth: 0).
+#   * ruff lint + format check.
+#   * pytest, including the keyless full-flow integration test (no network).
+# Make this a required status check in branch protection (Settings -> Branches).
+# ==========================================================================
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: gitleaks (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so a secret in ANY past commit is caught
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  test:
+    name: ruff + pytest (keyless)
+    runs-on: ubuntu-latest
+    env:
+      # CI runs with NO LLM key and NO network access to a provider.
+      TRIAGE_BACKEND: stub
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Set up Python
+        run: uv python install 3.11
+      - name: Install (with dev extras)
+        run: uv sync --extra dev
+      - name: Ruff lint
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Pytest
+        run: uv run pytest

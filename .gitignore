@@ -1,0 +1,119 @@
+# ==========================================================================
+# Inbox AI Agent — .gitignore
+# Priority: nothing sensitive ever reaches git. Secrets, real email, and the
+# database live only in ignored paths (var/, data/real/). Committed email data
+# is SYNTHETIC only (data/synthetic/, data/golden/).
+# ==========================================================================
+
+# --- Secrets & credentials (NEVER commit) ---------------------------------
+.env
+.env.*
+!.env.example
+*.env
+credentials.json
+client_secret*.json
+token.json
+*token*.json
+*.credentials
+*.pem
+*.key
+*.p12
+*.pfx
+service-account*.json
+gcp-*.json
+.secrets/
+secrets/
+
+# --- Real mailbox data & database (NEVER commit) --------------------------
+# Real ingested mail lives here and stays local:
+data/real/
+data/private/
+# Anything under data/ that isn't the synthetic corpus or golden eval sets:
+data/**/raw/
+# Database, caches, tokens, logs, scratch — all local-only:
+var/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.mbox
+*.eml
+*.msg
+*.pst
+*.ost
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+*.manifest
+*.spec
+
+# --- Virtual environments / package managers ------------------------------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+# uv keeps uv.lock tracked (commit it); ignore its cache only:
+.uv/
+
+# --- Tooling caches -------------------------------------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+.pyre/
+.pytype/
+.cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+.nox/
+
+# --- Notebooks ------------------------------------------------------------
+.ipynb_checkpoints/
+
+# --- Logs & temp ----------------------------------------------------------
+logs/
+*.log
+*.tmp
+*.bak
+*.orig
+tmp/
+scratch/
+
+# --- Secret-scan reports (may echo findings; keep local) ------------------
+gitleaks-report.*
+*.sarif
+
+# --- OS / editor ----------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Keep-file convention -------------------------------------------------
+# To keep an otherwise-empty tracked dir, add a .gitkeep and force-add it:
+#   git add -f data/synthetic/.gitkeep
