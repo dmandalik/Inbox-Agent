@@ -78,38 +78,52 @@ def generate_data(
 
 @app.command()
 def ingest(
+    source: Annotated[
+        str, typer.Option(help="Email source: 'synthetic' (default) or 'gmail' (opt-in).")
+    ] = "synthetic",
     corpus: Annotated[
         Path | None,
-        typer.Option(help="Corpus JSONL to ingest (default: data/synthetic/corpus.jsonl)."),
+        typer.Option(help="Synthetic corpus JSONL (default: data/synthetic/corpus.jsonl)."),
+    ] = None,
+    limit: Annotated[
+        int | None, typer.Option(help="Max messages to ingest (default: all).")
     ] = None,
     db: Annotated[
         Path | None, typer.Option(help="SQLite path (default: DB_PATH / var/inbox.db).")
     ] = None,
 ) -> None:
-    """Ingest a corpus into SQLite (idempotent — safe to re-run)."""
+    """Ingest emails from a source into SQLite (idempotent — safe to re-run)."""
     from inbox_agent.config import get_settings
+    from inbox_agent.email_source import build_email_source
     from inbox_agent.store import open_repository
     from inbox_agent.synthetic import DEFAULT_CORPUS_PATH
-    from inbox_agent.synthetic.generator import load_corpus
 
-    corpus_path = corpus or DEFAULT_CORPUS_PATH
-    if not corpus_path.exists():
-        typer.secho(
-            f"No corpus at {corpus_path}. Run `inbox-agent generate-data` first.",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
+    if source == "synthetic":
+        corpus_path = corpus or DEFAULT_CORPUS_PATH
+        if not corpus_path.exists():
+            typer.secho(
+                f"No corpus at {corpus_path}. Run `inbox-agent generate-data` first.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        email_source = build_email_source("synthetic", corpus_path=corpus_path)
+    else:
+        try:
+            email_source = build_email_source(source, settings=get_settings())
+        except Exception as exc:  # surface a clean message, not a traceback
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
 
     db_path = db or get_settings().db_path
-    emails = load_corpus(corpus_path)
+    emails = list(email_source.fetch(limit=limit))
     repo = open_repository(db_path)
     before = repo.count()
     repo.add_many(emails)
     after = repo.count()
     repo.close()
     typer.echo(
-        f"Ingested {len(emails)} emails into {db_path} "
+        f"Ingested {len(emails)} emails from '{email_source.name}' into {db_path} "
         f"({after - before} new, {len(emails) - (after - before)} already present)."
     )
 
