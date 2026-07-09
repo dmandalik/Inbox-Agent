@@ -129,9 +129,57 @@ def ingest(
 
 
 @app.command()
-def triage() -> None:
+def triage(
+    backend: Annotated[
+        str | None,
+        typer.Option(help="Override TRIAGE_BACKEND: 'stub' (keyless) or 'llm'."),
+    ] = None,
+    db: Annotated[
+        Path | None, typer.Option(help="SQLite path (default: DB_PATH / var/inbox.db).")
+    ] = None,
+    limit: Annotated[
+        int | None, typer.Option(help="Classify at most N emails (default: all).")
+    ] = None,
+) -> None:
     """Classify stored emails into triage categories."""
-    typer.echo(_PENDING)
+    from inbox_agent.config import get_settings
+    from inbox_agent.store import open_repository
+    from inbox_agent.triage import build_classifier
+
+    settings = get_settings()
+    if backend:
+        settings = settings.model_copy(update={"triage_backend": backend})
+
+    try:
+        classifier = build_classifier(settings)
+    except Exception as exc:  # ConfigError etc. — clean message, no traceback
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    repo = open_repository(db or settings.db_path)
+    emails = repo.all()
+    if not emails:
+        typer.secho(
+            "No emails in the DB. Run `inbox-agent ingest` first.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if limit is not None:
+        emails = emails[:limit]
+
+    typer.echo(f"Triaging {len(emails)} emails with '{classifier.name}' backend…")
+    predictions = classifier.classify_many(emails)
+    for mid, category in predictions.items():
+        repo.set_prediction(mid, category)
+    repo.close()
+
+    counts: dict[str, int] = {}
+    for category in predictions.values():
+        counts[category] = counts.get(category, 0) + 1
+    for category in sorted(counts):
+        typer.echo(f"  {category:<14} {counts[category]}")
+    typer.echo(f"Wrote {len(predictions)} predictions.")
 
 
 @app.command("eval")
