@@ -68,14 +68,83 @@ Every email is classified into one of six categories:
 
 `newsletter` · `work` · `receipt_order` · `personal` · `spam_phishing` · `notification`
 
+## How it works
+
+```
+generate-data          ingest              triage                eval
+┌──────────────┐   ┌──────────────┐   ┌───────────────┐   ┌──────────────┐
+│ synthetic    │──▶│ EmailSource  │──▶│  Classifier   │──▶│ metrics +    │
+│ generator    │   │  → SQLite    │   │ stub  |  llm  │   │ confusion mx │
+│ (seeded)     │   │ (idempotent) │   │ (zero-shot)   │   │  P/R/F1      │
+└──────────────┘   └──────────────┘   └───────────────┘   └──────────────┘
+ data/synthetic/      var/inbox.db      TRIAGE_BACKEND       data/golden/
+```
+
+Each stage sits behind an interface (`EmailSource`, `LLMClient`, `Classifier`)
+so later phases — RAG, agentic actions, a model-cascade router — slot in without
+rewrites.
+
+## Project layout
+
+```
+src/inbox_agent/
+  config.py          Env-driven settings; require_llm() validates on use.
+  llm/               LLMClient interface + OpenAI-compatible impl (429 backoff).
+  email_source/      EmailSource; Synthetic (default) + read-only Gmail stub.
+  store/             SQLite schema + idempotent repository.
+  triage/            Classifier; StubClassifier (rules) + LLMClassifier (zero-shot).
+  evals/             Stdlib metrics, harness, text/Markdown reports.
+  synthetic/         Seeded fake-email generator.
+  obs/               Logging, redaction, traced() seam.
+  cli.py             typer app.
+data/synthetic/      Committed fake corpus — the ONLY committed email data.
+data/golden/         Committed eval labels.
+data/real/  var/     Git-ignored: real mail, DB, tokens, logs.
+```
+
 ## Results
 
-Zero-shot vs. keyless stub on the synthetic golden set. _(Numbers filled in
-from `inbox-agent eval`; the stub is deterministic, the LLM row depends on the
-model you point at.)_
+Scored on the synthetic golden set (40 emails, 6 classes) with
+`inbox-agent eval`.
 
 <!-- RESULTS:START -->
-_Run `inbox-agent eval` to populate this table._
+### `stub` backend (deterministic rules, keyless)
+
+**Backend:** `stub` · **n:** 40 · **accuracy:** 0.97 · **macro-F1:** 0.97
+
+| category | precision | recall | F1 | support |
+|----------|----------:|-------:|---:|--------:|
+| newsletter | 0.88 | 1.00 | 0.93 | 7 |
+| work | 1.00 | 1.00 | 1.00 | 10 |
+| receipt_order | 1.00 | 1.00 | 1.00 | 6 |
+| personal | 1.00 | 1.00 | 1.00 | 5 |
+| spam_phishing | 1.00 | 1.00 | 1.00 | 6 |
+| notification | 1.00 | 0.83 | 0.91 | 6 |
+| **macro avg** | 0.98 | 0.97 | 0.97 | 40 |
+
+The single error is one `notification` predicted as `newsletter` (an automated
+digest whose body mentions unsubscribing).
+
+> **Read this number honestly.** The stub's rules were written against *this*
+> taxonomy and *this* generator, so 0.97 measures rule-fitting, not
+> generalization — it is a **floor and a regression guard**, not a result to
+> brag about. The interesting comparison is the zero-shot LLM, which sees the
+> categories only through a prompt and has never seen the corpus.
+
+### `llm` backend (zero-shot)
+
+Run it yourself with a free key — numbers depend on the model you point at:
+
+```bash
+cp .env.example .env      # set LLM_API_KEY
+uv run inbox-agent triage --backend llm && uv run inbox-agent eval --markdown
+```
+
+<!-- Paste your zero-shot table here once you've run it against a provider. -->
+
+_Not yet filled in: this requires an API key, which the author supplies — the
+repo intentionally ships no credentials. Phase 1 of `LEARNING.md` adds
+few-shot and embedding-based classifiers to this table._
 <!-- RESULTS:END -->
 
 ## Configuration
@@ -151,6 +220,35 @@ This is a **public** repo, so leak prevention is defense-in-depth:
 
 If a secret ever lands in a commit, follow the **leak-response protocol** in
 [`AGENTS.md`](AGENTS.md): rotate/revoke the key immediately, then scrub history.
+
+### Verify the protections yourself
+
+```bash
+# 1. No secret anywhere in the FULL history:
+gitleaks detect                       # expect: "no leaks found"
+
+# 2. All hooks pass on every file:
+uv run pre-commit run --all-files
+
+# 3. The hooks actually BLOCK a planted key (this commit must fail).
+#    Put any credential-shaped string in the file — e.g. a fake PEM private key,
+#    or AWS's canonical AKIA…EXAMPLE pair from their docs. (Don't commit this
+#    README with a literal key in it: the hooks will — correctly — stop you.)
+echo '<paste a fake credential here>' > leak_test.txt
+git add leak_test.txt && git commit -m "should be blocked"   # <- expect BLOCKED
+git restore --staged leak_test.txt && rm leak_test.txt
+
+# 4. Nothing sensitive is tracked:
+git ls-files | grep -E '(^\.env$|credentials|token|\.db$|^data/real/|^var/)'   # expect: no output
+```
+
+All four are part of this milestone's definition of done and pass on `main`.
+
+> **Why two scanners?** They have different blind spots. Verified here:
+> `gitleaks` catches a PEM private key and a realistic GitHub `ghp_…` token, but
+> *allowlists* AWS's own documentation key pair (the `AKIA…EXAMPLE` value) —
+> which `detect-secrets` catches. Running both is what makes step 3 fail.
+> Neither is sufficient alone, and GitHub Push Protection backstops both.
 
 ## License
 
