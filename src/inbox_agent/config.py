@@ -1,76 +1,62 @@
-"""Application configuration.
+"""Settings, read from the environment (optionally via a git-ignored ``.env``).
 
-All settings come from the environment (optionally via a git-ignored ``.env``).
-Hard rules enforced here:
+Two rules this file exists to enforce:
 
-* No secret is ever hardcoded or given a real default.
-* Two credential kinds are kept separate: a **Gmail** credential (never required;
-  the synthetic source is the default) and an **LLM key** (needed only for the
-  ``llm`` triage backend, and only a free/card-free one is expected).
-* Validation fails *loudly* with an actionable message rather than falling back
-  to a bogus value that would silently produce garbage.
+1. No secret is ever hardcoded or given a real default.
+2. Missing required config **fails loudly** with an actionable message rather
+   than falling back to a value that would silently produce garbage.
+
+Gmail credentials and the LLM key are kept separate on purpose: Gmail is never
+required (the synthetic source is the default), and the LLM key is needed only
+for ``TRIAGE_BACKEND=llm``.
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-TriageBackend = Literal["llm", "stub"]
 
 
 class ConfigError(RuntimeError):
-    """Raised when required configuration is missing or inconsistent."""
+    """Required configuration is missing or inconsistent."""
 
 
-class LLMSettings:
-    """Validated, non-optional LLM settings (produced by ``Settings.require_llm``)."""
+class LLMSettings(NamedTuple):
+    """Validated, non-optional LLM settings (from :meth:`Settings.require_llm`)."""
 
-    def __init__(self, base_url: str, api_key: str, model: str) -> None:
-        self.base_url = base_url
-        self.api_key = api_key
-        self.model = model
+    base_url: str
+    api_key: str
+    model: str
 
 
 class Settings(BaseSettings):
-    """Environment-driven settings. Instantiate via :func:`get_settings`."""
+    """Environment-driven settings. Get one via :func:`get_settings`."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        case_sensitive=False,
-    )
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
 
-    # --- LLM (OpenAI-compatible); optional at load time, validated on use -----
+    # LLM (OpenAI-compatible). Optional at load time; validated on use.
     llm_base_url: str | None = None
     llm_api_key: str | None = None
     llm_model: str | None = None
 
-    # --- Triage -------------------------------------------------------------
-    triage_backend: TriageBackend = "llm"
+    triage_backend: Literal["llm", "stub"] = "llm"
 
-    # --- Embeddings (Phase 2) -----------------------------------------------
-    embedding_backend: str = "sentence-transformers"
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-
-    # --- Gmail (optional, read-only, never required) ------------------------
+    # Gmail: optional, read-only, never required.
     gmail_credentials_path: Path = Path("var/credentials.json")
     gmail_token_path: Path = Path("var/token.json")
     gmail_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
 
-    # --- Storage ------------------------------------------------------------
-    db_path: Path = Field(default=Path("var/inbox.db"))
+    # SQLite lives under git-ignored var/ so it can never be committed.
+    db_path: Path = Path("var/inbox.db")
 
     def require_llm(self) -> LLMSettings:
-        """Return validated LLM settings or raise a clear :class:`ConfigError`.
+        """Return validated LLM settings, or raise a clear :class:`ConfigError`.
 
-        Called only on the ``llm`` code path, so the stub backend never needs a
-        key. Keeps the "fail loudly, no hardcoded fallback" guarantee.
+        Only the ``llm`` code path calls this, so the stub backend never needs
+        a key.
         """
         missing = [
             name
@@ -83,22 +69,18 @@ class Settings(BaseSettings):
         ]
         if missing:
             raise ConfigError(
-                "Triage backend 'llm' needs "
-                + ", ".join(missing)
-                + " but "
-                + ("it is" if len(missing) == 1 else "they are")
-                + " unset.\n"
+                f"Triage backend 'llm' needs {', '.join(missing)}, but "
+                f"{'it is' if len(missing) == 1 else 'they are'} unset.\n"
                 "Fix one of:\n"
-                "  1. Put a FREE key in .env (Groq: https://console.groq.com , "
-                "or Google AI Studio: https://aistudio.google.com/apikey), or\n"
+                "  1. Put a FREE key in .env (Groq: https://console.groq.com , or\n"
+                "     Google AI Studio: https://aistudio.google.com/apikey), or\n"
                 "  2. Run keyless: set TRIAGE_BACKEND=stub (no key, no network).\n"
                 "See .env.example for provider presets."
             )
-        assert self.llm_base_url and self.llm_api_key and self.llm_model  # for type-checkers
-        return LLMSettings(self.llm_base_url, self.llm_api_key, self.llm_model)
+        return LLMSettings(self.llm_base_url, self.llm_api_key, self.llm_model)  # type: ignore[arg-type]
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Return a cached :class:`Settings` instance (reads env once)."""
+    """Return a cached :class:`Settings` (reads the environment once)."""
     return Settings()

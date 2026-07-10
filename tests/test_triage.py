@@ -1,129 +1,132 @@
-"""Tests for the triage classifiers (stub rules + zero-shot LLM, mocked)."""
+"""Both classifiers. The LLM one is mocked — no unit test touches the network."""
 
 from __future__ import annotations
 
 import pytest
 
 from inbox_agent.config import ConfigError, Settings
-from inbox_agent.llm.base import LLMClient
+from inbox_agent.llm import LLMClient
 from inbox_agent.models import Email
 from inbox_agent.synthetic import generate_corpus
-from inbox_agent.triage import CATEGORIES, build_classifier
-from inbox_agent.triage.llm import SYSTEM_PROMPT, LLMClassifier, _parse_category
-from inbox_agent.triage.stub import StubClassifier
+from inbox_agent.triage import (
+    CATEGORIES,
+    SYSTEM_PROMPT,
+    LLMClassifier,
+    StubClassifier,
+    _parse_category,
+    build_classifier,
+)
 
 
-# --- Stub classifier -------------------------------------------------------
-def test_stub_returns_valid_categories_only():
-    clf = StubClassifier()
-    for e in generate_corpus():
-        assert clf.classify(e) in CATEGORIES
+def an_email(**overrides) -> Email:
+    defaults = {
+        "message_id": "m1",
+        "thread_id": "t1",
+        "date": "2026-06-15T09:00:00+00:00",
+        "from_addr": "someone@example.com",
+        "from_name": "Someone",
+        "subject": "Hi",
+        "body": "hello",
+    }
+    return Email(**{**defaults, **overrides})
 
 
-def test_stub_is_accurate_on_synthetic_corpus():
-    clf = StubClassifier()
+# --- stub backend ----------------------------------------------------------
+def test_stub_only_ever_returns_valid_categories():
+    stub = StubClassifier()
+    assert all(stub.classify(e) in CATEGORIES for e in generate_corpus())
+
+
+def test_stub_is_accurate_on_the_corpus():
+    stub = StubClassifier()
     emails = generate_corpus()
-    correct = sum(1 for e in emails if clf.classify(e) == e.category)
-    acc = correct / len(emails)
-    # The stub is tuned to this taxonomy; it should be strong here.
-    assert acc >= 0.9, f"stub accuracy too low: {acc:.2f}"
+    correct = sum(1 for e in emails if stub.classify(e) == e.category)
+    # Tuned to this taxonomy, so this is a floor/regression guard, not a result.
+    assert correct / len(emails) >= 0.9
 
 
-def test_stub_flags_all_injection_samples_as_spam():
-    clf = StubClassifier()
-    injections = [
-        e
-        for e in generate_corpus()
-        if "ignore all previous instructions" in e.body.lower()
-        or "system override" in e.body.lower()
-    ]
+def test_stub_flags_every_injection_sample_as_spam():
+    stub = StubClassifier()
+    injections = [e for e in generate_corpus() if "ignore all previous" in e.body.lower()]
     assert injections
-    assert all(clf.classify(e) == "spam_phishing" for e in injections)
+    assert all(stub.classify(e) == "spam_phishing" for e in injections)
 
 
 def test_stub_is_deterministic():
-    clf = StubClassifier()
-    e = generate_corpus()[0]
-    assert clf.classify(e) == clf.classify(e)
+    stub, email = StubClassifier(), generate_corpus()[0]
+    assert stub.classify(email) == stub.classify(email)
 
 
-# --- LLM classifier (mocked client; NO network) ----------------------------
-class FakeLLMClient(LLMClient):
-    """Returns a scripted reply and records the last prompt it received."""
+def test_stub_falls_back_to_default_for_an_unrecognisable_email():
+    assert StubClassifier().classify(an_email(from_addr="x@unknown.example.com")) == "notification"
+
+
+# --- llm backend (mocked) --------------------------------------------------
+class FakeLLM(LLMClient):
+    """Returns a scripted reply and records the prompt it was given."""
 
     def __init__(self, reply: str) -> None:
         self.reply = reply
         self.model = "fake"
-        self.last_system = None
-        self.last_user = None
+        self.system = self.user = ""
 
-    def complete(self, *, system, user, temperature=0.0, max_tokens=512) -> str:
-        self.last_system = system
-        self.last_user = user
+    def complete(self, *, system: str, user: str, max_tokens: int = 512) -> str:
+        self.system, self.user = system, user
         return self.reply
 
 
-def _email() -> Email:
-    return Email(
-        message_id="m1",
-        thread_id="t1",
-        date="2026-06-15T09:00:00+00:00",
-        from_addr="someone@example.com",
-        from_name="Someone",
-        subject="Hi",
-        body="hello",
+def test_llm_classifier_returns_the_models_label():
+    assert LLMClassifier(FakeLLM("work")).classify(an_email()) == "work"
+
+
+def test_llm_classifier_parses_a_noisy_reply():
+    assert (
+        LLMClassifier(FakeLLM("Category: receipt_order.\n")).classify(an_email()) == "receipt_order"
     )
 
 
-def test_llm_classifier_returns_model_label():
-    clf = LLMClassifier(FakeLLMClient("work"))
-    assert clf.classify(_email()) == "work"
+def test_llm_classifier_clamps_garbage_to_the_default():
+    assert LLMClassifier(FakeLLM("banana")).classify(an_email()) == "notification"
 
 
-def test_llm_classifier_parses_noisy_reply():
-    clf = LLMClassifier(FakeLLMClient("Category: receipt_order.\n"))
-    assert clf.classify(_email()) == "receipt_order"
-
-
-def test_llm_classifier_clamps_garbage_to_default():
-    clf = LLMClassifier(FakeLLMClient("banana"))
-    assert clf.classify(_email()) == "notification"  # DEFAULT_CATEGORY
-
-
-def test_llm_prompt_wraps_body_and_marks_untrusted():
-    fake = FakeLLMClient("work")
-    LLMClassifier(fake).classify(_email())
-    assert "<email>" in fake.last_user and "</email>" in fake.last_user
+def test_llm_prompt_delimits_the_email_and_marks_it_untrusted():
+    fake = FakeLLM("work")
+    LLMClassifier(fake).classify(an_email())
+    assert "<email>" in fake.user and "</email>" in fake.user
     assert "UNTRUSTED DATA" in SYSTEM_PROMPT
 
 
-def test_parse_category_helpers():
-    assert _parse_category("SPAM_PHISHING") == "spam_phishing"
-    assert _parse_category("this looks like personal mail") == "personal"
-    assert _parse_category("") == "notification"
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        ("SPAM_PHISHING", "spam_phishing"),
+        ("looks personal to me", "personal"),
+        ("", "notification"),
+    ],
+)
+def test_parse_category(reply, expected):
+    assert _parse_category(reply) == expected
 
 
-# --- Factory / config ------------------------------------------------------
-def test_factory_builds_stub_without_any_key():
-    settings = Settings(triage_backend="stub", _env_file=None)
-    clf = build_classifier(settings)
-    assert clf.name == "stub"
+# --- backend selection -----------------------------------------------------
+def settings(**overrides) -> Settings:
+    # _env_file=None so a developer's local .env can never leak a real key in.
+    return Settings(_env_file=None, **overrides)
 
 
-def test_factory_llm_without_key_fails_loudly():
-    settings = Settings(
-        triage_backend="llm",
-        llm_base_url=None,
-        llm_api_key=None,
-        llm_model=None,
-        _env_file=None,
+def test_stub_backend_needs_no_key():
+    assert build_classifier(settings(triage_backend="stub")).name == "stub"
+
+
+def test_llm_backend_without_a_key_fails_loudly():
+    unconfigured = settings(
+        triage_backend="llm", llm_base_url=None, llm_api_key=None, llm_model=None
     )
     with pytest.raises(ConfigError, match="TRIAGE_BACKEND=stub"):
-        build_classifier(settings)
+        build_classifier(unconfigured)
 
 
-def test_factory_rejects_unknown_backend():
-    settings = Settings(triage_backend="stub", _env_file=None)
-    settings = settings.model_copy(update={"triage_backend": "magic"})
+def test_unknown_backend_is_rejected():
+    bad = settings(triage_backend="stub").model_copy(update={"triage_backend": "magic"})
     with pytest.raises(ValueError, match="unknown TRIAGE_BACKEND"):
-        build_classifier(settings)
+        build_classifier(bad)

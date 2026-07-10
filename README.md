@@ -86,21 +86,31 @@ rewrites.
 
 ## Project layout
 
+One flat module per concept — read them top to bottom, in this order:
+
+| File | Lines | What it is |
+|------|------:|------------|
+| `models.py` | ~35 | The `Email` dataclass. Everything joins on `message_id`. |
+| `synthetic.py` | ~230 | The fake corpus, as a plain data table. No RNG. |
+| `store.py` | ~170 | SQLite schema + repository. Idempotent ingestion. |
+| `email_source.py` | ~115 | `EmailSource`: synthetic (default) + read-only Gmail stub. |
+| `llm.py` | ~110 | `LLMClient` + OpenAI-compatible impl + retry/backoff. |
+| `triage.py` | ~230 | `Classifier` + the two backends, side by side. |
+| `evals.py` | ~150 | Precision/recall/F1, confusion matrix, reports. |
+| `config.py` | ~85 | Env-driven settings. Fails loudly when unconfigured. |
+| `obs.py` | ~60 | Logging, secret redaction, `traced()` seam. |
+| `cli.py` | ~165 | The four commands. |
+
 ```
-src/inbox_agent/
-  config.py          Env-driven settings; require_llm() validates on use.
-  llm/               LLMClient interface + OpenAI-compatible impl (429 backoff).
-  email_source/      EmailSource; Synthetic (default) + read-only Gmail stub.
-  store/             SQLite schema + idempotent repository.
-  triage/            Classifier; StubClassifier (rules) + LLMClassifier (zero-shot).
-  evals/             Stdlib metrics, harness, text/Markdown reports.
-  synthetic/         Seeded fake-email generator.
-  obs/               Logging, redaction, traced() seam.
-  cli.py             typer app.
-data/synthetic/      Committed fake corpus — the ONLY committed email data.
-data/golden/         Committed eval labels.
-data/real/  var/     Git-ignored: real mail, DB, tokens, logs.
+data/synthetic/   Committed fake corpus — the ONLY committed email data.
+data/golden/      Committed eval labels.
+data/real/  var/  Git-ignored: real mail, DB, tokens, logs.
+tests/            One test file per module.
 ```
+
+**If you're reading this to learn it**, start at `models.py`, then follow the
+pipeline: `synthetic.py` → `store.py` → `triage.py` → `evals.py`. `cli.py`
+just wires those four together.
 
 ## Results
 

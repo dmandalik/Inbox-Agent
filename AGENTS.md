@@ -26,26 +26,34 @@ Stub backend scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
   we never fall back to a hardcoded secret or emit garbage labels silently.
 - **Keyless by default in CI.** The `stub` triage backend needs no key and no
   network, so the full pipeline (and its integration test) runs anywhere.
-- **Redact by default.** Bodies, addresses, keys, and tokens go through
-  `obs.redact` before they can reach a log or exception.
+- **Never log email content.** Bodies and addresses are simply never passed to a
+  logger, which is stronger than redacting them. `obs.redact_secret` masks the
+  one thing that does get logged: whether a credential is set.
+- **One flat module per concept.** No package directory exists until there is
+  more than one implementation worth separating. Prefer a 200-line file you can
+  read in one sitting over five 40-line files and an `__init__.py`.
 
 ## Architecture
 
 ```
 src/inbox_agent/
-  config.py          Settings (pydantic-settings, env-driven). require_llm() validates on use.
-  llm/               LLMClient interface + OpenAI-compatible impl (429 backoff).
-  email_source/      EmailSource interface; SyntheticEmailSource (default) + Gmail stub (read-only).
-  store/             SQLite schema + idempotent repository (join key: message_id).
-  triage/            Classifier interface; StubClassifier (rules) + LLMClassifier (zero-shot).
-  evals/             metrics (P/R/F1, confusion matrix, stdlib) + harness + report.
-  synthetic/         Seeded fake-email generator (deterministic corpus).
-  obs/               logging, redaction, traced() seam (Phase-4 tracing hook).
-  cli.py             typer app: generate-data, ingest, triage, eval.
-data/synthetic/      Committed fake corpus (the ONLY committed email data).
-data/golden/         Committed labels for eval.
-data/real/  var/     Git-ignored. Real mail, DB, tokens, logs — never committed.
+  models.py        The Email dataclass. Join key: message_id.
+  synthetic.py     The fake corpus as a data table (no RNG) + read/write JSONL.
+  store.py         SQLite schema + idempotent repository.
+  email_source.py  EmailSource; Synthetic (default) + read-only Gmail stub.
+  llm.py           LLMClient + OpenAI-compatible impl + retry/backoff.
+  triage.py        Classifier + StubClassifier (rules) + LLMClassifier (zero-shot).
+  evals.py         P/R/F1, confusion matrix, text + Markdown reports (stdlib).
+  config.py        Env-driven settings; require_llm() validates on use.
+  obs.py           Logging, secret redaction, traced() seam (Phase-4 hook).
+  cli.py           typer app: generate-data, ingest, triage, eval.
+data/synthetic/    Committed fake corpus (the ONLY committed email data).
+data/golden/       Committed labels for eval.
+data/real/  var/   Git-ignored. Real mail, DB, tokens, logs — never committed.
 ```
+
+Reading order: `models` → `synthetic` → `store` → `triage` → `evals`. `cli`
+wires them together; `config`/`obs`/`llm` are supporting cast.
 
 ### Data contract
 
@@ -74,11 +82,17 @@ mail never silently discards triage results.
   lines; avoids a heavy dependency for a small, transparent computation.
 - **Gmail deps are an optional extra (`[gmail]`).** Base install stays light and
   fully offline; the real-Gmail path is opt-in and read-only.
-- **Deterministic, seeded synthetic generator.** The committed corpus is stable
-  across runs so eval numbers and tests are reproducible. It also fixes the
-  clock (no `datetime.now()`), or dates would churn the diff on every run.
+- **The synthetic corpus is a fixture, not a random sample.** There is no RNG
+  and no `datetime.now()` — message `i` is sent 37 minutes after message `i-1`.
+  So a regenerate is byte-identical, eval numbers are reproducible, and the
+  committed corpus never churns the diff. A seed would have bought nothing.
 - **Predictions carry their backend.** `predicted_backend` means `eval` reports
   which classifier produced the numbers instead of guessing.
+- **The Gmail source is an honest stub.** It validates the scope, the optional
+  deps, and the credentials, then raises `GmailNotConfigured`. It previously
+  carried ~120 lines of OAuth + MIME-parsing that no test could reach and no
+  one had ever run. Unreachable code that *looks* finished is worse than a
+  stub that says what it is.
 
 ## Gotchas (learned the hard way — don't re-discover these)
 

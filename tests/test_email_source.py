@@ -1,42 +1,35 @@
-"""Tests for the EmailSource interface: synthetic default + Gmail guardrails."""
+"""Synthetic is the default; Gmail is opt-in, read-only, and inert."""
 
 from __future__ import annotations
 
 import pytest
 
-from inbox_agent.email_source import SyntheticEmailSource, build_email_source
-from inbox_agent.email_source.gmail import GmailEmailSource, GmailNotConfigured
-from inbox_agent.synthetic import generate_corpus
+from inbox_agent.email_source import (
+    GmailEmailSource,
+    GmailNotConfigured,
+    SyntheticEmailSource,
+    build_email_source,
+)
+from inbox_agent.synthetic import generate_corpus, write_corpus
 
 
-def test_synthetic_source_yields_full_corpus_from_file(tmp_path):
-    from inbox_agent.synthetic import write_corpus
-
-    corpus = tmp_path / "corpus.jsonl"
-    golden = tmp_path / "labels.jsonl"
+def test_synthetic_source_reads_a_corpus_file(tmp_path):
+    corpus, golden = tmp_path / "corpus.jsonl", tmp_path / "labels.jsonl"
     write_corpus(generate_corpus(), corpus_path=corpus, golden_path=golden)
-
-    src = SyntheticEmailSource(corpus_path=corpus)
-    emails = list(src.fetch())
-    assert len(emails) == len(generate_corpus())
-    assert src.name == "synthetic"
+    assert list(SyntheticEmailSource(corpus).fetch()) == generate_corpus()
 
 
-def test_synthetic_source_generates_when_no_file(tmp_path):
-    # Point at a non-existent file -> falls back to deterministic generation.
-    src = SyntheticEmailSource(corpus_path=tmp_path / "missing.jsonl", seed=1337)
-    emails = list(src.fetch())
-    assert [e.to_json() for e in emails] == [e.to_json() for e in generate_corpus(1337)]
+def test_synthetic_source_generates_when_the_file_is_missing(tmp_path):
+    source = SyntheticEmailSource(tmp_path / "missing.jsonl")
+    assert list(source.fetch()) == generate_corpus()
 
 
 def test_synthetic_source_respects_limit(tmp_path):
-    src = SyntheticEmailSource(corpus_path=tmp_path / "missing.jsonl")
-    assert len(list(src.fetch(limit=5))) == 5
+    assert len(list(SyntheticEmailSource(tmp_path / "missing.jsonl").fetch(limit=5))) == 5
 
 
-def test_factory_default_is_synthetic():
-    src = build_email_source()
-    assert isinstance(src, SyntheticEmailSource)
+def test_factory_defaults_to_synthetic():
+    assert isinstance(build_email_source(), SyntheticEmailSource)
 
 
 def test_factory_rejects_unknown_source():
@@ -44,19 +37,16 @@ def test_factory_rejects_unknown_source():
         build_email_source("imap")
 
 
-def test_gmail_source_rejects_non_readonly_scope():
-    # Hard guarantee: Milestone 1 is read-only.
+def test_gmail_refuses_any_non_readonly_scope():
     with pytest.raises(GmailNotConfigured, match="read-only"):
         GmailEmailSource(scope="https://www.googleapis.com/auth/gmail.modify")
 
 
-def test_gmail_source_is_inert_without_credentials(tmp_path):
-    # Never required to run: fetching without creds fails loudly, not silently.
-    src = GmailEmailSource(
+def test_gmail_is_inert_without_credentials(tmp_path):
+    """Fetching without deps or creds fails loudly, and touches no network."""
+    source = GmailEmailSource(
         credentials_path=tmp_path / "credentials.json",
         token_path=tmp_path / "token.json",
     )
-    # Either the optional google libs are missing, or the creds file is absent —
-    # both raise our clear GmailNotConfigured, and nothing touches the network.
     with pytest.raises(GmailNotConfigured):
-        list(src.fetch())
+        list(source.fetch())

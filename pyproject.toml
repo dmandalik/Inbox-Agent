@@ -23,10 +23,6 @@ gmail = [
     "google-auth-oauthlib>=1.2",
     "google-auth-httplib2>=0.2",
 ]
-# Phase 2 (RAG). Heavy (pulls torch); not installed by default.
-embeddings = [
-    "sentence-transformers>=3.0",
-]
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",

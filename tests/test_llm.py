@@ -1,88 +1,77 @@
-"""Tests for the LLM client + retry helper (no network)."""
+"""The retry helper and the OpenAI-compatible client. No network."""
 
 from __future__ import annotations
 
 import pytest
 
-from inbox_agent.llm.openai_client import _is_retryable
-from inbox_agent.llm.retry import RetryExhausted, with_retries
+from inbox_agent.llm import RetryExhausted, _is_retryable, with_retries
 
 
-class Boom(Exception):
+class Transient(Exception):
     pass
 
 
-def test_with_retries_succeeds_after_transient_failures():
-    calls = {"n": 0}
+def never_sleep(_seconds: float) -> None:
+    """Injected so backoff tests run instantly."""
 
-    def fn():
-        calls["n"] += 1
-        if calls["n"] < 3:
-            raise Boom()
+
+def test_retries_then_succeeds():
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 3:
+            raise Transient()
         return "ok"
 
-    out = with_retries(
-        fn, is_retryable=lambda e: isinstance(e, Boom), max_retries=5, sleep=lambda _s: None
-    )
-    assert out == "ok"
-    assert calls["n"] == 3
+    result = with_retries(flaky, is_retryable=lambda e: isinstance(e, Transient), sleep=never_sleep)
+    assert result == "ok"
+    assert len(calls) == 3
 
 
-def test_with_retries_gives_up_after_max():
-    attempts = {"n": 0}
+def test_gives_up_after_max_retries():
+    calls = []
 
-    def fn():
-        attempts["n"] += 1
-        raise Boom()
+    def always_fails():
+        calls.append(1)
+        raise Transient()
 
     with pytest.raises(RetryExhausted):
-        with_retries(fn, is_retryable=lambda _e: True, max_retries=2, sleep=lambda _s: None)
-    # initial try + 2 retries
-    assert attempts["n"] == 3
+        with_retries(always_fails, is_retryable=lambda _e: True, max_retries=2, sleep=never_sleep)
+    assert len(calls) == 3  # initial attempt + 2 retries
 
 
-def test_with_retries_propagates_non_retryable():
-    def fn():
+def test_non_retryable_errors_propagate_immediately():
+    def boom():
         raise ValueError("nope")
 
     with pytest.raises(ValueError, match="nope"):
-        with_retries(fn, is_retryable=lambda _e: False, sleep=lambda _s: None)
+        with_retries(boom, is_retryable=lambda _e: False, sleep=never_sleep)
 
 
-def test_is_retryable_ignores_ordinary_errors():
+def test_ordinary_errors_are_not_retryable():
     assert _is_retryable(ValueError("x")) is False
 
 
-def test_openai_client_complete_returns_text(monkeypatch):
+def test_openai_client_sends_system_and_user_and_strips_the_reply(monkeypatch):
     import openai
-
-    class FakeMsg:
-        content = "  work  "
-
-    class FakeChoice:
-        message = FakeMsg()
-
-    class FakeResp:
-        choices = [FakeChoice()]
 
     class FakeCompletions:
         def create(self, **kwargs):
-            # Assert we pass the messages through in the expected shape.
             assert kwargs["messages"][0]["role"] == "system"
             assert kwargs["messages"][1]["role"] == "user"
-            return FakeResp()
+            message = type("M", (), {"content": "  work  "})
+            choice = type("C", (), {"message": message})
+            return type("R", (), {"choices": [choice]})
 
-    class FakeChat:
-        completions = FakeCompletions()
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})
 
-    class FakeClient:
-        def __init__(self, **kwargs):
-            self.chat = FakeChat()
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
 
-    monkeypatch.setattr(openai, "OpenAI", FakeClient)
-
-    from inbox_agent.llm.openai_client import OpenAICompatibleClient
+    from inbox_agent.llm import OpenAICompatibleClient
 
     client = OpenAICompatibleClient(base_url="http://local", api_key="k", model="m")
-    assert client.complete(system="s", user="u") == "work"  # stripped
+    assert client.complete(system="s", user="u") == "work"
     assert client.model == "m"
