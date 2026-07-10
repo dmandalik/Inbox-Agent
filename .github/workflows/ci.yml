@@ -15,18 +15,31 @@ on:
 permissions:
   contents: read
 
+env:
+  # Pin the scanner so CI runs byte-for-byte what we verify locally.
+  GITLEAKS_VERSION: 8.30.1
+
 jobs:
   secret-scan:
     name: gitleaks (full history)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0 # full history so a secret in ANY past commit is caught
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+      - name: Install gitleaks
+        run: |
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+      # We invoke the binary directly rather than gitleaks-action@v2: the action
+      # requires GITHUB_TOKEN, is pinned to a deprecated Node runtime, and needs
+      # a paid license under an org. The binary has none of those constraints and
+      # matches the local `gitleaks detect` exactly.
+      # --exit-code=1 => any finding fails the job. --redact => never echo a secret.
+      - name: Scan full history for secrets
+        run: gitleaks detect --source . --redact --no-banner --exit-code 1
 
   test:
     name: ruff + pytest (keyless)
@@ -35,7 +48,7 @@ jobs:
       # CI runs with NO LLM key and NO network access to a provider.
       TRIAGE_BACKEND: stub
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install uv
         uses: astral-sh/setup-uv@v5
       - name: Set up Python

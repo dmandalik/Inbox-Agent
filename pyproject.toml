@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "An AI agent that monitors an email inbox: triage, RAG Q&A, and draft replies with human-in-the-loop control. Milestone 1: synthetic-data triage + eval."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 authors = [{ name = "Dhruv M" }]
 keywords = ["email", "triage", "llm", "rag", "agent", "evals"]
 

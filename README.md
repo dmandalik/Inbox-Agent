@@ -252,5 +252,4 @@ All four are part of this milestone's definition of done and pass on `main`.
 
 ## License
 
-MIT — see `pyproject.toml`.
-# Inbox-Agent
+MIT — see [`LICENSE`](LICENSE).
