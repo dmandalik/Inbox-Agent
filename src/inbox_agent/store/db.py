@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS emails (
     labels_json        TEXT NOT NULL DEFAULT '[]',
     category           TEXT,            -- ground-truth label (synthetic only)
     predicted_category TEXT,            -- triage output (set by `triage`)
+    predicted_backend  TEXT,            -- which classifier produced it (stub/llm)
     predicted_at       TEXT             -- ISO timestamp of the prediction
 );
 CREATE INDEX IF NOT EXISTS idx_emails_thread ON emails(thread_id);

@@ -171,7 +171,7 @@ def triage(
     typer.echo(f"Triaging {len(emails)} emails with '{classifier.name}' backend…")
     predictions = classifier.classify_many(emails)
     for mid, category in predictions.items():
-        repo.set_prediction(mid, category)
+        repo.set_prediction(mid, category, backend=classifier.name)
     repo.close()
 
     counts: dict[str, int] = {}
@@ -183,9 +183,47 @@ def triage(
 
 
 @app.command("eval")
-def eval_() -> None:
+def eval_(
+    db: Annotated[
+        Path | None, typer.Option(help="SQLite path (default: DB_PATH / var/inbox.db).")
+    ] = None,
+    markdown: Annotated[
+        bool, typer.Option("--markdown", help="Also print a Markdown table (for the README).")
+    ] = False,
+) -> None:
     """Score triage predictions against ground-truth labels."""
-    typer.echo(_PENDING)
+    from inbox_agent.config import get_settings
+    from inbox_agent.evals import evaluate, render_confusion, render_markdown, render_text
+    from inbox_agent.store import open_repository
+
+    settings = get_settings()
+    repo = open_repository(db or settings.db_path)
+    ground_truth = repo.ground_truth()
+    predictions = repo.predictions()
+    backends = repo.prediction_backends()
+    repo.close()
+
+    if not predictions:
+        typer.secho(
+            "No predictions in the DB. Run `inbox-agent triage` first.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    backend_label = ", ".join(sorted(backends)) if backends else "unknown"
+    try:
+        result = evaluate(ground_truth, predictions, backend=backend_label)
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(render_text(result))
+    typer.echo("")
+    typer.echo(render_confusion(result))
+    if markdown:
+        typer.echo("")
+        typer.echo(render_markdown(result))
 
 
 if __name__ == "__main__":

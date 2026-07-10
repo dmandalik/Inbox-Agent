@@ -114,15 +114,29 @@ class EmailRepository:
         return [_row_to_email(r) for r in cur.fetchall()]
 
     # --- predictions -------------------------------------------------------
-    def set_prediction(self, message_id: str, category: str, when: str | None = None) -> None:
+    def set_prediction(
+        self,
+        message_id: str,
+        category: str,
+        backend: str | None = None,
+        when: str | None = None,
+    ) -> None:
         ts = when or datetime.now(UTC).isoformat()
         cur = self.conn.execute(
-            "UPDATE emails SET predicted_category = ?, predicted_at = ? WHERE message_id = ?",
-            (category, ts, message_id),
+            "UPDATE emails SET predicted_category = ?, predicted_backend = ?, "
+            "predicted_at = ? WHERE message_id = ?",
+            (category, backend, ts, message_id),
         )
         self.conn.commit()
         if cur.rowcount == 0:
             raise KeyError(f"unknown message_id: {message_id}")
+
+    def prediction_backends(self) -> set[str]:
+        """Distinct backends recorded across current predictions."""
+        cur = self.conn.execute(
+            "SELECT DISTINCT predicted_backend FROM emails WHERE predicted_backend IS NOT NULL"
+        )
+        return {r["predicted_backend"] for r in cur.fetchall()}
 
     def get_prediction(self, message_id: str) -> str | None:
         row = self.conn.execute(

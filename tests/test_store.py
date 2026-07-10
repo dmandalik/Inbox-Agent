@@ -89,6 +89,19 @@ def test_predictions_and_ground_truth_maps():
     assert all(v == "notification" for v in preds.values())
 
 
+def test_prediction_records_backend():
+    repo = _repo()
+    repo.add(_sample())
+    repo.set_prediction("msg-0001", "work", backend="stub")
+    assert repo.prediction_backends() == {"stub"}
+
+
+def test_prediction_backends_empty_before_triage():
+    repo = _repo()
+    repo.add(_sample())
+    assert repo.prediction_backends() == set()
+
+
 def test_by_thread_returns_thread_ordered():
     repo = _repo()
     repo.add_many(generate_corpus())
