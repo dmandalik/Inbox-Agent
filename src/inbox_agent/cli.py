@@ -7,8 +7,10 @@ Milestone 1 wires four commands into one pipeline::
     inbox-agent triage          # classify stored emails (stub or llm backend)
     inbox-agent eval            # score predictions vs. ground-truth labels
 
-This module is a runnable stub in the scaffolding commit; each command is
-wired to its implementation in subsequent commits.
+Run end-to-end with no key and no network via ``TRIAGE_BACKEND=stub``.
+
+Implementations are imported lazily inside each command so ``--help`` stays
+fast and an unconfigured LLM never blocks the keyless path.
 """
 
 from pathlib import Path
@@ -23,8 +25,6 @@ app = typer.Typer(
     no_args_is_help=True,
     help="Inbox AI Agent — synthetic-data triage + eval (Milestone 1).",
 )
-
-_PENDING = "This command is scaffolded and will be wired in a later commit."
 
 
 @app.callback()
