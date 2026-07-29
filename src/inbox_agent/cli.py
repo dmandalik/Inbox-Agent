@@ -244,5 +244,27 @@ def ask_eval(
     typer.echo(render_retrieval(result))
 
 
+@app.command()
+def scan(db: DbOption = None) -> None:
+    """Flag stored emails that look like prompt-injection attempts."""
+    from inbox_agent.security import detect_injection
+
+    repo = open_repository(db or get_settings().db_path)
+    emails = repo.all()
+    repo.close()
+    if not emails:
+        raise _fail("No emails in the DB. Run `inbox-agent ingest` first.")
+
+    flagged = [(e, detect_injection(f"{e.subject}\n{e.body}")) for e in emails]
+    flagged = [(e, signals) for e, signals in flagged if signals]
+
+    typer.echo(f"Scanned {len(emails)} emails. {len(flagged)} look like injection attempts.\n")
+    for email, signals in flagged:
+        typer.secho(f"! {email.subject}", fg=typer.colors.YELLOW)
+        typer.echo(f"    from {email.from_name or email.from_addr}")
+        typer.echo(f"    signals: {', '.join(signals)}\n")
+    typer.echo("Heuristic backstop only. A missing flag does not mean an email is safe.")
+
+
 if __name__ == "__main__":
     app()

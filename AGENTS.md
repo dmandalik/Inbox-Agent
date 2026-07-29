@@ -11,7 +11,7 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 81 tests green, `ruff` clean, full-history `gitleaks` clean.
+Current state: 93 tests green, `ruff` clean, full-history `gitleaks` clean.
 Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
 BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only
@@ -47,10 +47,11 @@ src/inbox_agent/
   triage.py        Classifier + StubClassifier (rules) + LLMClassifier (zero-shot).
   retrieval.py     Retriever + BM25 "ask my inbox" + recall@k/MRR eval.
   rag.py           Grounded answer generation over hits + is_local_llm guard.
+  security.py      Injection attack suite + detect_injection backstop.
   evals.py         P/R/F1, confusion matrix, text + Markdown reports (stdlib).
   config.py        Env-driven settings; require_llm() validates on use.
   obs.py           Logging, secret redaction, traced() seam (Phase-4 hook).
-  cli.py           typer app: generate-data, ingest, triage, eval.
+  cli.py           typer app: generate-data, ingest, triage, eval, ask, scan.
 data/synthetic/    Committed fake corpus (the ONLY committed email data).
 data/golden/       Committed labels for eval.
 data/real/  var/   Git-ignored. Real mail, DB, tokens, logs — never committed.
@@ -102,6 +103,13 @@ mail never silently discards triage results.
 - **Retrieval relevance is judged at the thread level.** `GOLDEN_QUERIES` maps a
   question to `thread_id`s, resolved to `message_id`s against the corpus at eval
   time. Thread ids are stable, so the golden set survives message renumbering.
+- **Injection defense is architectural, and honest about it.** The real
+  guarantee is output clamping: triage can only emit a valid category, so no
+  email can make it produce attacker text (tested with an obedient model fed the
+  payload). `detect_injection` is explicitly a backstop, not a gate — it has
+  false negatives by design, and no security decision rests on it. The attack
+  suite exists so tests can assert 0/6 attacks reach their goal label and report
+  a concrete number. See `THREAT_MODEL.md`.
 - **Answer generation fails closed on a cloud LLM.** RAG sends retrieved email
   text to the model, so `ask --answer` refuses a non-local `LLM_BASE_URL` unless
   `--allow-cloud` is passed (`rag.is_local_llm`). Real mail → local Ollama (which

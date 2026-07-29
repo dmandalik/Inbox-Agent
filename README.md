@@ -21,7 +21,7 @@ zero-shot LLM (or a keyless rule-based stub) → score with an eval harness.
 | 0 | Setup & ingestion (synthetic + read-only Gmail, SQLite) | ✅ Milestone 1 |
 | 1 | Triage + eval harness | ✅ Milestone 1 |
 | 2 | Ask-my-inbox retrieval (BM25; dense/hybrid next) | 🟡 in progress |
-| 3 | Agentic actions + injection security | ⬜ planned |
+| 3 | Injection defense + threat model (actions next) | 🟡 in progress |
 | 4 | Observability, cost, CI-gated evals | ⬜ planned |
 | 5 | Depth arc (MCP server *or* feedback-loop ML) | ⬜ planned |
 
@@ -98,6 +98,7 @@ One flat module per concept — read them top to bottom, in this order:
 | `triage.py` | ~230 | `Classifier` + the two backends, side by side. |
 | `retrieval.py` | ~190 | `Retriever` + BM25 "ask my inbox" + recall@k/MRR eval. |
 | `rag.py` | ~75 | Grounded answer generation over retrieved emails + privacy guard. |
+| `security.py` | ~160 | Prompt-injection attack suite + best-effort detector. |
 | `evals.py` | ~150 | Precision/recall/F1, confusion matrix, reports. |
 | `config.py` | ~85 | Env-driven settings. Fails loudly when unconfigured. |
 | `obs.py` | ~60 | Logging, secret redaction, `traced()` seam. |
@@ -205,6 +206,43 @@ LLM_API_KEY=ollama
 emails are passed to the model as delimited, untrusted data with an instruction
 to ignore any commands inside them — the same injection-defense posture as
 triage. Dense/hybrid retrieval is the remaining Phase 2 slice (`LEARNING.md`).
+
+## Security: prompt injection
+
+Every email is attacker-controlled text, and some of it is written to hijack an
+LLM that reads it. The defense is **architectural, not a regex**:
+
+- **Output clamping.** Triage can only ever emit one of the six categories, so no
+  email can make the classifier produce attacker-chosen text or leak a prompt.
+  The worst case is a wrong but valid label. This is proven with a test that
+  feeds a fully obedient model the attacker's payload and checks the output stays
+  a valid category.
+- **Untrusted framing.** Email content is always delimited and marked as data,
+  with an instruction to ignore commands inside it (triage and RAG).
+- **Least privilege.** The agent is read-only, so there is no tool an injection
+  can abuse; `ask --answer` fails closed on a cloud LLM; Gmail refuses any scope
+  but read-only.
+
+Measured on a 6-email attack suite (`security.py`):
+
+| check | result |
+|-------|--------|
+| attacks that achieved their goal label | **0 / 6** |
+| attack emails caught as hostile by triage | 6 / 6 |
+| suite + corpus samples flagged by the detector | all |
+| false positives on 38 benign emails | 0 |
+
+The `detect_injection` heuristic is a **backstop, not a gate** — a human aid,
+surfaced by `inbox-agent scan`, which flags mail that looks like an injection
+attempt:
+
+```bash
+uv run inbox-agent scan     # works on your real inbox too
+```
+
+Full write-up: [`THREAT_MODEL.md`](THREAT_MODEL.md). Remaining Phase 3 work
+(the draft-commit pattern for actions, permission tiers, dual-LLM) is listed
+there.
 
 ## Configuration
 
