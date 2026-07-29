@@ -18,7 +18,7 @@ zero-shot LLM (or a keyless rule-based stub) → score with an eval harness.
 
 | Phase | What | State |
 |------:|------|-------|
-| 0 | Setup & ingestion (synthetic + Gmail-stub, SQLite) | ✅ Milestone 1 |
+| 0 | Setup & ingestion (synthetic + read-only Gmail, SQLite) | ✅ Milestone 1 |
 | 1 | Triage + eval harness | ✅ Milestone 1 |
 | 2 | RAG Q&A (hybrid search + rerank) | ⬜ planned |
 | 3 | Agentic actions + injection security | ⬜ planned |
@@ -93,7 +93,7 @@ One flat module per concept — read them top to bottom, in this order:
 | `models.py` | ~35 | The `Email` dataclass. Everything joins on `message_id`. |
 | `synthetic.py` | ~230 | The fake corpus, as a plain data table. No RNG. |
 | `store.py` | ~170 | SQLite schema + repository. Idempotent ingestion. |
-| `email_source.py` | ~115 | `EmailSource`: synthetic (default) + read-only Gmail stub. |
+| `email_source.py` | ~250 | `EmailSource`: synthetic (default) + read-only Gmail. |
 | `llm.py` | ~110 | `LLMClient` + OpenAI-compatible impl + retry/backoff. |
 | `triage.py` | ~230 | `Classifier` + the two backends, side by side. |
 | `evals.py` | ~150 | Precision/recall/F1, confusion matrix, reports. |
@@ -181,17 +181,34 @@ tier that trains on prompts.
 
 ## Gmail (optional, read-only)
 
-The default `EmailSource` is synthetic. A real Gmail read-only path is an
-opt-in stub (`inbox_agent/email_source/gmail.py`). To enable it later:
+The default `EmailSource` is synthetic. A real Gmail path is implemented in
+`inbox_agent/email_source.py` (`GmailEmailSource`) and is **opt-in and
+read-only** — it refuses any scope other than `gmail.readonly`, so it can never
+send, delete, or modify mail.
 
-```bash
-uv sync --extra gmail
-```
+**One-time setup (you own the credentials — never paste them anywhere but
+git-ignored `var/`):**
 
-Then create a Google Cloud project, enable the Gmail API, download the OAuth
-client secret to `var/credentials.json` (git-ignored), and use
-`gmail.readonly` scope. No send/delete/modify scopes are used. Full steps are in
-the stub's docstring. **You provide and manage these credentials yourself.**
+1. In the [Google Cloud console](https://console.cloud.google.com), create a
+   project and **enable the Gmail API** (APIs & Services → Library).
+2. Configure the **OAuth consent screen** (External); add your address as a
+   test user.
+3. Create an **OAuth client ID → Desktop app**, download the JSON, and save it
+   as `var/credentials.json`.
+4. Install the optional deps and run:
+   ```bash
+   uv sync --extra gmail
+   uv run inbox-agent ingest --source gmail --limit 20
+   uv run inbox-agent triage --backend stub   # or llm, with a key
+   ```
+
+The first `ingest` opens a browser once for read-only consent; the token caches
+to `var/token.json` (git-ignored) so later runs are non-interactive.
+
+Use a **throwaway Gmail account** to demo this. Note there are **no
+ground-truth labels** on a real inbox, so `triage` produces predictions but
+`eval` has nothing to score — accuracy numbers only mean something on the
+labeled synthetic set.
 
 ## Development
 

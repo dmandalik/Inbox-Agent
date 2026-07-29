@@ -40,7 +40,7 @@ src/inbox_agent/
   models.py        The Email dataclass. Join key: message_id.
   synthetic.py     The fake corpus as a data table (no RNG) + read/write JSONL.
   store.py         SQLite schema + idempotent repository.
-  email_source.py  EmailSource; Synthetic (default) + read-only Gmail stub.
+  email_source.py  EmailSource; Synthetic (default) + read-only Gmail.
   llm.py           LLMClient + OpenAI-compatible impl + retry/backoff.
   triage.py        Classifier + StubClassifier (rules) + LLMClassifier (zero-shot).
   evals.py         P/R/F1, confusion matrix, text + Markdown reports (stdlib).
@@ -88,11 +88,15 @@ mail never silently discards triage results.
   committed corpus never churns the diff. A seed would have bought nothing.
 - **Predictions carry their backend.** `predicted_backend` means `eval` reports
   which classifier produced the numbers instead of guessing.
-- **The Gmail source is an honest stub.** It validates the scope, the optional
-  deps, and the credentials, then raises `GmailNotConfigured`. It previously
-  carried ~120 lines of OAuth + MIME-parsing that no test could reach and no
-  one had ever run. Unreachable code that *looks* finished is worse than a
-  stub that says what it is.
+- **The read-only Gmail source is split for testability.** `_message_to_email`
+  and its helpers are pure functions over a Gmail API payload (headers, MIME
+  parts, base64url, RFC-2047 encoded words) and are unit-tested offline. The
+  network-touching `fetch` takes an injectable `service_factory`, so a fake
+  Gmail service exercises the list/get pagination loop with no OAuth and no
+  network. The earlier version had none of this coverage and was deleted during
+  the simplify pass; this is the deliberate re-add, tested this time. The scope
+  guard (`gmail.readonly` only) makes send/delete/modify structurally
+  impossible.
 
 ## Gotchas (learned the hard way — don't re-discover these)
 
