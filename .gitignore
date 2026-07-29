@@ -117,3 +117,11 @@ Desktop.ini
 # --- Keep-file convention -------------------------------------------------
 # To keep an otherwise-empty tracked dir, add a .gitkeep and force-add it:
 #   git add -f data/synthetic/.gitkeep
+
+# --- Web frontend (Next) ---
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+web/.env.local
+npm-debug.log*

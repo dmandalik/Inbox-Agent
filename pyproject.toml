@@ -24,6 +24,12 @@ gmail = [
     "google-auth-oauthlib>=1.2",
     "google-auth-httplib2>=0.2",
 ]
+# Web UI backend. Serves the JSON API the Next frontend talks to.
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "httpx>=0.27",
+]
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",

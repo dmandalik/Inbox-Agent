@@ -53,8 +53,8 @@ jobs:
         uses: astral-sh/setup-uv@v5
       - name: Set up Python
         run: uv python install 3.11
-      - name: Install (with dev extras)
-        run: uv sync --extra dev
+      - name: Install (with dev + web extras)
+        run: uv sync --extra dev --extra web
       - name: Ruff lint
         run: uv run ruff check .
       - name: Ruff format check

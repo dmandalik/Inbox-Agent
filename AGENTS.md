@@ -11,7 +11,7 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 93 tests green, `ruff` clean, full-history `gitleaks` clean.
+Current state: 106 tests green, `ruff` clean, full-history `gitleaks` clean.
 Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
 BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only
@@ -48,13 +48,16 @@ src/inbox_agent/
   retrieval.py     Retriever + BM25 "ask my inbox" + recall@k/MRR eval.
   rag.py           Grounded answer generation over hits + is_local_llm guard.
   security.py      Injection attack suite + detect_injection backstop.
+  api.py           FastAPI backend for the web UI (read-only, LLM-free).
   evals.py         P/R/F1, confusion matrix, text + Markdown reports (stdlib).
   config.py        Env-driven settings; require_llm() validates on use.
   obs.py           Logging, secret redaction, traced() seam (Phase-4 hook).
-  cli.py           typer app: generate-data, ingest, triage, eval, ask, scan.
+  cli.py           typer app: generate-data, ingest, triage, eval, ask, scan, serve.
 data/synthetic/    Committed fake corpus (the ONLY committed email data).
 data/golden/       Committed labels for eval.
 data/real/  var/   Git-ignored. Real mail, DB, tokens, logs — never committed.
+web/               Next + React frontend (the console). Talks to api.py.
+                   node_modules/ and .next/ are git-ignored.
 ```
 
 Reading order: `models` → `synthetic` → `store` → `triage` → `evals`. `cli`
@@ -110,6 +113,21 @@ mail never silently discards triage results.
   false negatives by design, and no security decision rests on it. The attack
   suite exists so tests can assert 0/6 attacks reach their goal label and report
   a concrete number. See `THREAT_MODEL.md`.
+- **The frontend reuses the mockup's CSS, not Tailwind.** The design was already
+  hand-authored as CSS (warm palette, mono metadata, avatars); porting it into
+  `web/app/globals.css` verbatim keeps the exact look with no conversion churn.
+  `web/` is a lean Next app (no Tailwind, no create-next-app boilerplate); it
+  proxies `/api/*` to FastAPI via `next.config.mjs`, so the browser calls
+  same-origin and there is no CORS dance in dev.
+- **The web API is a thin, read-only, LLM-free layer.** `api.py` holds no logic
+  of its own — it calls the same store/triage/retrieval/security functions the
+  CLI does, so the two never drift. The request path never calls an LLM: it
+  serves a **stored** prediction if one exists (so a local `triage --backend
+  llm`/Ollama run shows up in the UI) and falls back to the stub otherwise, plus
+  BM25 for ask. That is what keeps it safe to serve a real inbox to a local
+  frontend. Answer generation is deliberately not exposed; that needs the LLM
+  and its privacy guard. FastAPI/uvicorn live in the `[web]` extra so the base
+  install stays light. `inbox-agent serve` runs it.
 - **Answer generation fails closed on a cloud LLM.** RAG sends retrieved email
   text to the model, so `ask --answer` refuses a non-local `LLM_BASE_URL` unless
   `--allow-cloud` is passed (`rag.is_local_llm`). Real mail → local Ollama (which

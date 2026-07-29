@@ -100,3 +100,27 @@ def test_ask_answer_refuses_a_cloud_llm_without_allow(tmp_path, monkeypatch):
 
     assert result.exit_code == 1
     assert "non-local LLM" in result.output
+
+
+def test_triage_llm_refuses_a_cloud_llm_without_allow(tmp_path, monkeypatch):
+    """Same guard on the triage path: real mail can't reach a cloud model."""
+    from typer.testing import CliRunner
+
+    from inbox_agent.cli import app
+    from inbox_agent.config import get_settings
+
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("LLM_API_KEY", "x")
+    monkeypatch.setenv("LLM_MODEL", "llama-3.3-70b-versatile")
+    get_settings.cache_clear()
+
+    runner = CliRunner()
+    corpus, golden, db = tmp_path / "c.jsonl", tmp_path / "g.jsonl", tmp_path / "i.db"
+    runner.invoke(app, ["generate-data", "--corpus", str(corpus), "--golden", str(golden)])
+    runner.invoke(app, ["ingest", "--corpus", str(corpus), "--db", str(db)])
+
+    result = runner.invoke(app, ["triage", "--backend", "llm", "--db", str(db)])
+    get_settings.cache_clear()
+
+    assert result.exit_code == 1
+    assert "non-local LLM" in result.output

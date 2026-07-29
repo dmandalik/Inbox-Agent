@@ -20,6 +20,7 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from email.header import decode_header, make_header
 from email.utils import getaddresses, parseaddr, parsedate_to_datetime
+from html.parser import HTMLParser
 from pathlib import Path
 
 from inbox_agent.models import Email
@@ -210,16 +211,58 @@ def _find_mime(payload: dict, target: str) -> str | None:
     return None
 
 
-def _extract_body(payload: dict) -> str:
-    """Best-effort body text: prefer text/plain, then text/html, then the root.
+class _HTMLToText(HTMLParser):
+    """Collapse HTML into readable plain text (block tags become line breaks)."""
 
-    TODO(phase-2): strip HTML tags when only a text/html part exists.
-    """
-    for mime in ("text/plain", "text/html"):
-        body = _find_mime(payload, mime)
-        if body:
-            return body
-    return _decode_b64(payload.get("body", {}).get("data"))
+    _BLOCK = {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"}
+    _SKIP = {"script", "style", "head", "title"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)  # entities decode into data for us
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag in self._SKIP:
+            self._skip_depth += 1
+        elif tag in self._BLOCK:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP and self._skip_depth:
+            self._skip_depth -= 1
+        elif tag in self._BLOCK:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if not self._skip_depth:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        lines = [ln.strip() for ln in "".join(self._parts).splitlines()]
+        return "\n".join(ln for ln in lines if ln).strip()
+
+
+def _html_to_text(html: str) -> str:
+    """Best-effort HTML -> text. Returns the input unchanged if parsing fails."""
+    parser = _HTMLToText()
+    try:
+        parser.feed(html)
+    except Exception:  # never let a malformed email break ingestion
+        return html
+    return parser.text() or html
+
+
+def _extract_body(payload: dict) -> str:
+    """Best-effort body text: prefer text/plain, then text/html (stripped)."""
+    plain = _find_mime(payload, "text/plain")
+    if plain and plain.strip():
+        return plain.strip()
+    html = _find_mime(payload, "text/html")
+    if html and html.strip():
+        return _html_to_text(html)
+    raw = _decode_b64(payload.get("body", {}).get("data"))
+    return _html_to_text(raw) if "<" in raw and ">" in raw else raw
 
 
 def _date_iso(raw: dict, headers: list[dict]) -> str:

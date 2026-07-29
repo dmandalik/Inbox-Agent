@@ -45,6 +45,22 @@ def _fail(message: str) -> typer.Exit:
     return typer.Exit(code=1)
 
 
+def _guard_cloud_llm(settings, allow_cloud: bool) -> None:
+    """Refuse to send email text to a non-local LLM unless explicitly allowed.
+
+    Used by every command that feeds email content to a model (triage --backend
+    llm, ask --answer), so real mail can't reach a cloud tier by accident.
+    """
+    from inbox_agent.rag import is_local_llm
+
+    if not allow_cloud and not is_local_llm(settings.llm_base_url or ""):
+        raise _fail(
+            f"Refusing to send email text to a non-local LLM ({settings.llm_base_url}).\n"
+            "On a real inbox, use a local model: set the Ollama preset in .env "
+            "(see .env.example). For synthetic data, pass --allow-cloud to proceed."
+        )
+
+
 @app.command()
 def version() -> None:
     """Print the installed version."""
@@ -103,12 +119,18 @@ def triage(
         str | None, typer.Option(help="Override TRIAGE_BACKEND: 'stub' or 'llm'.")
     ] = None,
     limit: Annotated[int | None, typer.Option(help="Classify at most N emails.")] = None,
+    allow_cloud: Annotated[
+        bool, typer.Option(help="Permit sending email text to a non-local LLM.")
+    ] = False,
     db: DbOption = None,
 ) -> None:
     """Classify stored emails into triage categories."""
     settings = get_settings()
     if backend:
         settings = settings.model_copy(update={"triage_backend": backend})
+    # The llm backend sends email text to a model; block cloud on real mail.
+    if settings.triage_backend == "llm":
+        _guard_cloud_llm(settings, allow_cloud)
     try:
         classifier = build_classifier(settings)
     except Exception as exc:  # ConfigError when `llm` has no key
@@ -213,15 +235,10 @@ def ask(
         return
 
     from inbox_agent.llm import build_llm_client
-    from inbox_agent.rag import answer_question, is_local_llm
+    from inbox_agent.rag import answer_question
 
     settings = get_settings()
-    if not allow_cloud and not is_local_llm(settings.llm_base_url or ""):
-        raise _fail(
-            f"Refusing to send email text to a non-local LLM ({settings.llm_base_url}).\n"
-            "On a real inbox, use a local model: set the Ollama preset in .env "
-            "(see .env.example). For synthetic data, pass --allow-cloud to proceed."
-        )
+    _guard_cloud_llm(settings, allow_cloud)
     try:
         client = build_llm_client(settings)
     except Exception as exc:  # ConfigError when the LLM is unconfigured
@@ -242,6 +259,21 @@ def ask_eval(
     """Score BM25 retrieval on the synthetic golden query set."""
     result = evaluate_retrieval(build_retriever("bm25"), generate_corpus(), k=k)
     typer.echo(render_retrieval(result))
+
+
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Host to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Port to bind.")] = 8000,
+    reload: Annotated[bool, typer.Option("--reload", help="Auto-reload on code changes.")] = False,
+) -> None:
+    """Run the web API (needs the web extra: uv sync --extra web)."""
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise _fail("The web API needs extra deps. Install them: uv sync --extra web") from exc
+    typer.echo(f"Inbox Agent API on http://{host}:{port}  (docs at /docs)")
+    uvicorn.run("inbox_agent.api:app", host=host, port=port, reload=reload)
 
 
 @app.command()

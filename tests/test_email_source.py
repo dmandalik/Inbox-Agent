@@ -13,6 +13,7 @@ from inbox_agent.email_source import (
     SyntheticEmailSource,
     _decode_b64,
     _extract_body,
+    _html_to_text,
     _message_to_email,
     build_email_source,
 )
@@ -117,9 +118,25 @@ def test_message_to_email_decodes_encoded_subject():
     assert email.subject == "Café ☕"
 
 
-def test_extract_body_falls_back_to_html_when_no_plain_text():
+def test_extract_body_strips_html_when_no_plain_text():
     payload = _gmail_message("m1", html_only=True)["payload"]
-    assert _extract_body(payload) == "<p>Hello</p>"
+    assert _extract_body(payload) == "Hello"  # tags stripped, not raw markup
+
+
+def test_html_to_text_strips_tags_and_drops_script_style():
+    html = (
+        "<style>.x{color:red}</style><div>Hi <b>Alice</b>,</div>"
+        "<p>Your order shipped.</p><script>evil()</script>"
+    )
+    text = _html_to_text(html)
+    assert "Hi Alice," in text
+    assert "Your order shipped." in text
+    assert "color:red" not in text and "evil()" not in text
+    assert "<" not in text and ">" not in text
+
+
+def test_html_to_text_decodes_entities():
+    assert _html_to_text("<p>Tom &amp; Jerry &lt;3</p>") == "Tom & Jerry <3"
 
 
 # --- Gmail fetch loop (fake service; no OAuth, no network) ------------------

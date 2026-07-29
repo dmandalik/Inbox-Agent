@@ -99,6 +99,7 @@ One flat module per concept — read them top to bottom, in this order:
 | `retrieval.py` | ~190 | `Retriever` + BM25 "ask my inbox" + recall@k/MRR eval. |
 | `rag.py` | ~75 | Grounded answer generation over retrieved emails + privacy guard. |
 | `security.py` | ~160 | Prompt-injection attack suite + best-effort detector. |
+| `api.py` | ~140 | FastAPI backend for the web UI (read-only, local, LLM-free). |
 | `evals.py` | ~150 | Precision/recall/F1, confusion matrix, reports. |
 | `config.py` | ~85 | Env-driven settings. Fails loudly when unconfigured. |
 | `obs.py` | ~60 | Logging, secret redaction, `traced()` seam. |
@@ -207,6 +208,36 @@ emails are passed to the model as delimited, untrusted data with an instruction
 to ignore any commands inside them — the same injection-defense posture as
 triage. Dense/hybrid retrieval is the remaining Phase 2 slice (`LEARNING.md`).
 
+## Web app
+
+A local web UI sits on top of the CLI: a **FastAPI backend** (`api.py`) and a
+**Next + React frontend** (`web/`). It is a three-pane console — category triage
+on the left, the message list in the middle, and a reading pane that shows each
+email's triage verdict and a live security read (flagged emails get an inline
+"manipulation attempt" panel with the signals it caught). Everything is local
+and LLM-free (stub triage + BM25), so it is safe to run over a real inbox.
+
+Run it in two terminals:
+
+```bash
+# terminal 1 — the API
+uv sync --extra web
+uv run inbox-agent serve            # http://127.0.0.1:8000  (docs at /docs)
+
+# terminal 2 — the frontend
+cd web
+npm install
+npm run dev                         # http://localhost:3000
+```
+
+Open http://localhost:3000. The frontend proxies `/api/*` to the backend, so no
+CORS setup is needed. API endpoints: `/api/health`, `/api/categories`,
+`/api/emails` (+ `?category=`), `/api/emails/{id}`, `POST /api/ask`, `/api/scan`.
+
+Reply drafting is the next feature; the "Draft a reply" button is present but
+disabled until it ships (and it will use the draft-commit pattern — you approve
+before anything is created).
+
 ## Security: prompt injection
 
 Every email is attacker-controlled text, and some of it is written to hijack an
@@ -258,6 +289,31 @@ for every key and provider preset. Highlights:
 
 If `TRIAGE_BACKEND=llm` and no key is set, the tool **fails loudly** with an
 actionable message instead of emitting garbage labels.
+
+### Real triage quality on a real inbox (local Ollama)
+
+The `stub` classifier is tuned to the synthetic data and does **not** generalize
+to real senders. For good triage (and ask-answers) on a real inbox, use the LLM
+backend with a **local** model so nothing leaves your machine:
+
+```bash
+# 1. install Ollama (https://ollama.com) and pull a small model
+ollama pull llama3.2
+
+# 2. point .env at it
+#    LLM_BASE_URL=http://localhost:11434/v1
+#    LLM_MODEL=llama3.2
+#    LLM_API_KEY=ollama
+
+# 3. classify your real inbox locally, then view it in the web app
+uv run inbox-agent triage --backend llm --db var/real.db
+```
+
+The web app shows whatever `triage` stored, so those local-LLM categories appear
+in the UI with no LLM calls in the request path. Both `triage --backend llm` and
+`ask --answer` **fail closed** on a non-local `LLM_BASE_URL`, so real mail can
+never reach a cloud model by accident (pass `--allow-cloud` only for synthetic
+data).
 
 ### Privacy rule (real inbox)
 
