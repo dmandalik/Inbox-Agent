@@ -69,12 +69,11 @@ class Settings(BaseSettings):
         ]
         if missing:
             raise ConfigError(
-                f"Triage backend 'llm' needs {', '.join(missing)}, but "
-                f"{'it is' if len(missing) == 1 else 'they are'} unset.\n"
-                "Fix one of:\n"
-                "  1. Put a FREE key in .env (Groq: https://console.groq.com , or\n"
-                "     Google AI Studio: https://aistudio.google.com/apikey), or\n"
-                "  2. Run keyless: set TRIAGE_BACKEND=stub (no key, no network).\n"
+                f"The LLM is not configured. Missing: {', '.join(missing)}.\n"
+                "Set these in .env:\n"
+                "  a free key from Groq (https://console.groq.com) or Google AI\n"
+                "  Studio (https://aistudio.google.com/apikey), or a local Ollama.\n"
+                "For triage only, you can skip the LLM with TRIAGE_BACKEND=stub.\n"
                 "See .env.example for provider presets."
             )
         return LLMSettings(self.llm_base_url, self.llm_api_key, self.llm_model)  # type: ignore[arg-type]

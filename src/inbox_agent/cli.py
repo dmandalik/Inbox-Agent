@@ -148,6 +148,12 @@ def eval_(
 
     if not predictions:
         raise _fail("No predictions in the DB. Run `inbox-agent triage` first.")
+    if not ground_truth:
+        raise _fail(
+            "These emails have no ground-truth labels, so accuracy cannot be "
+            "scored. Labels only exist for the synthetic corpus, not a real "
+            "inbox. Your triage predictions are still saved in the DB."
+        )
 
     try:
         result = evaluate(

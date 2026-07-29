@@ -83,6 +83,33 @@ def test_triage_without_ingest_fails_cleanly(paths, monkeypatch):
     assert "ingest" in r.output
 
 
+def test_eval_on_unlabeled_mail_explains_no_ground_truth(tmp_path):
+    """Real mail has no labels; eval should say so, not the generic triage hint."""
+    from inbox_agent.models import Email
+    from inbox_agent.store import open_repository
+
+    db = tmp_path / "real.db"
+    repo = open_repository(str(db))
+    repo.add(
+        Email(
+            message_id="r1",
+            thread_id="t",
+            date="2026-01-01T00:00:00+00:00",
+            from_addr="a@example.com",
+            from_name="A",
+            subject="hi",
+            body="hello",
+            category=None,  # like real ingested mail
+        )
+    )
+    repo.set_prediction("r1", "work", backend="stub")
+    repo.close()
+
+    r = run("eval", "--db", db)
+    assert r.exit_code == 1
+    assert "no ground-truth labels" in r.output
+
+
 def test_eval_without_triage_fails_cleanly(paths):
     run("generate-data", "--corpus", paths["corpus"], "--golden", paths["golden"])
     run("ingest", "--corpus", paths["corpus"], "--db", paths["db"])
