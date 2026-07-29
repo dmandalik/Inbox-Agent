@@ -11,9 +11,11 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 53 tests green, `ruff` clean, full-history `gitleaks` clean.
-Stub backend scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
+Current state: 71 tests green, `ruff` clean, full-history `gitleaks` clean.
+Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
+BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only
+Gmail ingestion works on a live inbox.
 
 ## Design principles
 
@@ -43,6 +45,7 @@ src/inbox_agent/
   email_source.py  EmailSource; Synthetic (default) + read-only Gmail.
   llm.py           LLMClient + OpenAI-compatible impl + retry/backoff.
   triage.py        Classifier + StubClassifier (rules) + LLMClassifier (zero-shot).
+  retrieval.py     Retriever + BM25 "ask my inbox" + recall@k/MRR eval.
   evals.py         P/R/F1, confusion matrix, text + Markdown reports (stdlib).
   config.py        Env-driven settings; require_llm() validates on use.
   obs.py           Logging, secret redaction, traced() seam (Phase-4 hook).
@@ -88,6 +91,16 @@ mail never silently discards triage results.
   committed corpus never churns the diff. A seed would have bought nothing.
 - **Predictions carry their backend.** `predicted_backend` means `eval` reports
   which classifier produced the numbers instead of guessing.
+- **Retrieval (Phase 2) starts with BM25, not embeddings.** `rank-bm25` is a
+  ~50 KB pure-Python dep (pulls only numpy); dense `sentence-transformers` would
+  add ~2 GB of PyTorch. BM25 ships a working, private, offline "ask my inbox"
+  plus a real recall@k/MRR eval now; a dense/hybrid `Retriever` slots in behind
+  the same interface later, gated behind an optional extra. Retrieval is
+  LLM-free, so it is safe on a real inbox — only the *generation* slice (later)
+  needs an LLM, and on real mail that must be local (Ollama).
+- **Retrieval relevance is judged at the thread level.** `GOLDEN_QUERIES` maps a
+  question to `thread_id`s, resolved to `message_id`s against the corpus at eval
+  time. Thread ids are stable, so the golden set survives message renumbering.
 - **The read-only Gmail source is split for testability.** `_message_to_email`
   and its helpers are pure functions over a Gmail API payload (headers, MIME
   parts, base64url, RFC-2047 encoded words) and are unit-tested offline. The
@@ -145,9 +158,10 @@ uv run ruff check . && uv run ruff format --check .
 
 Tests cover: store round-trip + idempotency + prediction preservation, the
 synthetic generator (determinism, fake domains, injection samples), the email
-sources (incl. Gmail's read-only-scope guard and inert-without-creds behaviour),
-both classifiers (LLM mocked — **no unit test touches the network**), the retry
-helper, eval metrics, and a keyless full-flow integration test
+sources (incl. Gmail's read-only-scope guard, offline payload parsing, and a
+fake-service fetch loop), both classifiers (LLM mocked — **no unit test touches
+the network**), the retry helper, eval metrics, BM25 retrieval + recall@k/MRR,
+and a keyless full-flow integration test
 (`generate → ingest → triage → eval` with `TRIAGE_BACKEND=stub`).
 
 ## Secret & data protection

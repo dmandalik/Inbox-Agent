@@ -20,6 +20,7 @@ from inbox_agent import __version__
 from inbox_agent.config import get_settings
 from inbox_agent.email_source import build_email_source
 from inbox_agent.evals import evaluate, render_confusion, render_markdown, render_text
+from inbox_agent.retrieval import build_retriever, evaluate_retrieval, render_retrieval
 from inbox_agent.store import open_repository
 from inbox_agent.synthetic import (
     DEFAULT_CORPUS_PATH,
@@ -161,6 +162,44 @@ def eval_(
     if markdown:
         typer.echo("")
         typer.echo(render_markdown(result))
+
+
+@app.command()
+def ask(
+    question: Annotated[str, typer.Argument(help="What to search your inbox for.")],
+    k: Annotated[int, typer.Option(help="How many emails to return.")] = 5,
+    db: DbOption = None,
+) -> None:
+    """Find the emails most relevant to a question (local, private, no LLM)."""
+    repo = open_repository(db or get_settings().db_path)
+    emails = repo.all()
+    repo.close()
+    if not emails:
+        raise _fail("No emails in the DB. Run `inbox-agent ingest` first.")
+
+    retriever = build_retriever("bm25")
+    retriever.index(emails)
+    hits = [h for h in retriever.search(question, k=k) if h.score > 0]
+    if not hits:
+        typer.echo("No relevant emails found.")
+        return
+
+    typer.echo(f"Top {len(hits)} results for: {question!r}\n")
+    for rank, hit in enumerate(hits, start=1):
+        e = hit.email
+        snippet = " ".join(e.body.split())[:120]
+        typer.echo(f"{rank}. [{hit.score:4.1f}] {e.subject}")
+        typer.echo(f"     from {e.from_name or e.from_addr} · {e.date[:10]}")
+        typer.echo(f"     {snippet}…\n")
+
+
+@app.command("ask-eval")
+def ask_eval(
+    k: Annotated[int, typer.Option(help="Cutoff for recall@k / hit-rate.")] = 5,
+) -> None:
+    """Score BM25 retrieval on the synthetic golden query set."""
+    result = evaluate_retrieval(build_retriever("bm25"), generate_corpus(), k=k)
+    typer.echo(render_retrieval(result))
 
 
 if __name__ == "__main__":

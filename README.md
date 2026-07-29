@@ -20,7 +20,7 @@ zero-shot LLM (or a keyless rule-based stub) → score with an eval harness.
 |------:|------|-------|
 | 0 | Setup & ingestion (synthetic + read-only Gmail, SQLite) | ✅ Milestone 1 |
 | 1 | Triage + eval harness | ✅ Milestone 1 |
-| 2 | RAG Q&A (hybrid search + rerank) | ⬜ planned |
+| 2 | Ask-my-inbox retrieval (BM25; dense/hybrid next) | 🟡 in progress |
 | 3 | Agentic actions + injection security | ⬜ planned |
 | 4 | Observability, cost, CI-gated evals | ⬜ planned |
 | 5 | Depth arc (MCP server *or* feedback-loop ML) | ⬜ planned |
@@ -96,6 +96,7 @@ One flat module per concept — read them top to bottom, in this order:
 | `email_source.py` | ~250 | `EmailSource`: synthetic (default) + read-only Gmail. |
 | `llm.py` | ~110 | `LLMClient` + OpenAI-compatible impl + retry/backoff. |
 | `triage.py` | ~230 | `Classifier` + the two backends, side by side. |
+| `retrieval.py` | ~190 | `Retriever` + BM25 "ask my inbox" + recall@k/MRR eval. |
 | `evals.py` | ~150 | Precision/recall/F1, confusion matrix, reports. |
 | `config.py` | ~85 | Env-driven settings. Fails loudly when unconfigured. |
 | `obs.py` | ~60 | Logging, secret redaction, `traced()` seam. |
@@ -156,6 +157,31 @@ _Not yet filled in: this requires an API key, which the author supplies — the
 repo intentionally ships no credentials. Phase 1 of `LEARNING.md` adds
 few-shot and embedding-based classifiers to this table._
 <!-- RESULTS:END -->
+
+## Ask my inbox (retrieval)
+
+Find the emails relevant to a question. This is **local, offline, and private**
+— pure BM25 keyword ranking, no LLM and no network — so it's safe to run over a
+real inbox:
+
+```bash
+uv run inbox-agent ask "when is the Q3 planning doc due?"
+uv run inbox-agent ask "receipts from BookNest" --k 3
+```
+
+Retrieval quality on the synthetic golden query set (`inbox-agent ask-eval`):
+
+| metric | BM25 |
+|--------|-----:|
+| recall@5 | 1.00 |
+| MRR | 0.94 |
+| hit-rate | 1.00 |
+
+_(8 golden queries, relevance judged at the thread level.)_ Answer *generation*
+(an LLM composing a reply from the retrieved emails) and dense/hybrid retrieval
+are the next slices — see `LEARNING.md` Phase 2. On a real inbox the generation
+step must use a **local model (Ollama)**, never a cloud tier that trains on
+prompts.
 
 ## Configuration
 
