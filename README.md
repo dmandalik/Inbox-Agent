@@ -97,6 +97,7 @@ One flat module per concept — read them top to bottom, in this order:
 | `llm.py` | ~110 | `LLMClient` + OpenAI-compatible impl + retry/backoff. |
 | `triage.py` | ~230 | `Classifier` + the two backends, side by side. |
 | `retrieval.py` | ~190 | `Retriever` + BM25 "ask my inbox" + recall@k/MRR eval. |
+| `rag.py` | ~75 | Grounded answer generation over retrieved emails + privacy guard. |
 | `evals.py` | ~150 | Precision/recall/F1, confusion matrix, reports. |
 | `config.py` | ~85 | Env-driven settings. Fails loudly when unconfigured. |
 | `obs.py` | ~60 | Logging, secret redaction, `traced()` seam. |
@@ -177,11 +178,33 @@ Retrieval quality on the synthetic golden query set (`inbox-agent ask-eval`):
 | MRR | 0.94 |
 | hit-rate | 1.00 |
 
-_(8 golden queries, relevance judged at the thread level.)_ Answer *generation*
-(an LLM composing a reply from the retrieved emails) and dense/hybrid retrieval
-are the next slices — see `LEARNING.md` Phase 2. On a real inbox the generation
-step must use a **local model (Ollama)**, never a cloud tier that trains on
-prompts.
+_(8 golden queries, relevance judged at the thread level.)_
+
+### Get an answer, not just a list
+
+`--answer` adds an LLM step that composes a grounded, cited answer from the
+retrieved emails:
+
+```bash
+uv run inbox-agent ask "when is the Q3 doc due?" --answer
+```
+
+**Privacy guard (fail-closed):** generating an answer sends email text to the
+configured LLM, so on a **non-local** endpoint this is *blocked* unless you pass
+`--allow-cloud`. For a real inbox, point `LLM_BASE_URL` at a local
+[Ollama](https://ollama.com) (preset in `.env.example`) so nothing leaves your
+machine:
+
+```dotenv
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=qwen3:8b
+LLM_API_KEY=ollama
+```
+
+`--allow-cloud` is fine for the **synthetic** corpus (it's fake). The retrieved
+emails are passed to the model as delimited, untrusted data with an instruction
+to ignore any commands inside them — the same injection-defense posture as
+triage. Dense/hybrid retrieval is the remaining Phase 2 slice (`LEARNING.md`).
 
 ## Configuration
 

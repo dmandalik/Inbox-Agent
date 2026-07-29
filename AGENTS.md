@@ -11,7 +11,7 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 71 tests green, `ruff` clean, full-history `gitleaks` clean.
+Current state: 81 tests green, `ruff` clean, full-history `gitleaks` clean.
 Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
 BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only
@@ -46,6 +46,7 @@ src/inbox_agent/
   llm.py           LLMClient + OpenAI-compatible impl + retry/backoff.
   triage.py        Classifier + StubClassifier (rules) + LLMClassifier (zero-shot).
   retrieval.py     Retriever + BM25 "ask my inbox" + recall@k/MRR eval.
+  rag.py           Grounded answer generation over hits + is_local_llm guard.
   evals.py         P/R/F1, confusion matrix, text + Markdown reports (stdlib).
   config.py        Env-driven settings; require_llm() validates on use.
   obs.py           Logging, secret redaction, traced() seam (Phase-4 hook).
@@ -101,6 +102,13 @@ mail never silently discards triage results.
 - **Retrieval relevance is judged at the thread level.** `GOLDEN_QUERIES` maps a
   question to `thread_id`s, resolved to `message_id`s against the corpus at eval
   time. Thread ids are stable, so the golden set survives message renumbering.
+- **Answer generation fails closed on a cloud LLM.** RAG sends retrieved email
+  text to the model, so `ask --answer` refuses a non-local `LLM_BASE_URL` unless
+  `--allow-cloud` is passed (`rag.is_local_llm`). Real mail → local Ollama (which
+  speaks the OpenAI protocol, so no new client code — just `.env`). Retrieved
+  emails go to the model as delimited, untrusted data with a no-obey instruction,
+  same injection posture as triage. Retrieval itself never calls an LLM, so
+  `ask` without `--answer` is always private.
 - **The read-only Gmail source is split for testability.** `_message_to_email`
   and its helpers are pure functions over a Gmail API payload (headers, MIME
   parts, base64url, RFC-2047 encoded words) and are unit-tested offline. The
@@ -161,7 +169,8 @@ synthetic generator (determinism, fake domains, injection samples), the email
 sources (incl. Gmail's read-only-scope guard, offline payload parsing, and a
 fake-service fetch loop), both classifiers (LLM mocked — **no unit test touches
 the network**), the retry helper, eval metrics, BM25 retrieval + recall@k/MRR,
-and a keyless full-flow integration test
+RAG answer generation (LLM mocked) + the fail-closed cloud-LLM guard, and a
+keyless full-flow integration test
 (`generate → ingest → triage → eval` with `TRIAGE_BACKEND=stub`).
 
 ## Secret & data protection

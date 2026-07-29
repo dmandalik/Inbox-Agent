@@ -168,9 +168,20 @@ def eval_(
 def ask(
     question: Annotated[str, typer.Argument(help="What to search your inbox for.")],
     k: Annotated[int, typer.Option(help="How many emails to return.")] = 5,
+    answer: Annotated[
+        bool, typer.Option("--answer", "-a", help="Also generate an answer with the LLM.")
+    ] = False,
+    allow_cloud: Annotated[
+        bool, typer.Option(help="Permit sending email text to a non-local LLM.")
+    ] = False,
     db: DbOption = None,
 ) -> None:
-    """Find the emails most relevant to a question (local, private, no LLM)."""
+    """Find the emails relevant to a question; optionally generate an answer.
+
+    Retrieval is local and private (no LLM). ``--answer`` adds an LLM step that
+    sends the retrieved emails to the configured model — blocked on a non-local
+    endpoint unless ``--allow-cloud`` is passed (use a local Ollama for real mail).
+    """
     repo = open_repository(db or get_settings().db_path)
     emails = repo.all()
     repo.close()
@@ -191,6 +202,31 @@ def ask(
         typer.echo(f"{rank}. [{hit.score:4.1f}] {e.subject}")
         typer.echo(f"     from {e.from_name or e.from_addr} · {e.date[:10]}")
         typer.echo(f"     {snippet}…\n")
+
+    if not answer:
+        return
+
+    from inbox_agent.llm import build_llm_client
+    from inbox_agent.rag import answer_question, is_local_llm
+
+    settings = get_settings()
+    if not allow_cloud and not is_local_llm(settings.llm_base_url or ""):
+        raise _fail(
+            f"Refusing to send email text to a non-local LLM ({settings.llm_base_url}).\n"
+            "On a real inbox, use a local model: set the Ollama preset in .env "
+            "(see .env.example). For synthetic data, pass --allow-cloud to proceed."
+        )
+    try:
+        client = build_llm_client(settings)
+    except Exception as exc:  # ConfigError when the LLM is unconfigured
+        raise _fail(str(exc)) from exc
+
+    result = answer_question(question, hits, client)
+    typer.echo(f"Answer:\n{result.text}\n")
+    if result.sources:
+        typer.echo("Sources:")
+        for i, hit in enumerate(result.sources, start=1):
+            typer.echo(f"  [{i}] {hit.email.subject}")
 
 
 @app.command("ask-eval")
