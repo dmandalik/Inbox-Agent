@@ -148,6 +148,8 @@ export const api = {
     }
     return res.json();
   },
+  sync: (limit = 50): Promise<{ added: number; fetched: number; total: number }> =>
+    send("/sync", "POST", { limit }),
   labels: () => get<{ labels: Label[] }>("/labels"),
   createLabel: (name: string, color: string, instructions: string): Promise<Label> =>
     send("/labels", "POST", { name, color, instructions }),

@@ -28,6 +28,7 @@ from pydantic import BaseModel
 from inbox_agent import __version__
 from inbox_agent.chat import ChatEngine, ChatTurn
 from inbox_agent.config import ConfigError, get_settings
+from inbox_agent.email_source import GmailNotConfigured, build_email_source
 from inbox_agent.llm import build_llm_client
 from inbox_agent.models import Email
 from inbox_agent.rag import is_local_llm
@@ -283,6 +284,37 @@ def scan() -> dict:
     emails, preds, states, labels = _load()
     flagged = [s for s in (_summary(e, preds, states, labels) for e in emails) if s["flagged"]]
     return {"flagged": flagged, "count": len(flagged)}
+
+
+# --- live sync with Gmail (read-only fetch) -------------------------------
+class SyncRequest(BaseModel):
+    limit: int = 50
+
+
+@app.post("/api/sync")
+def sync(req: SyncRequest) -> dict:
+    """Pull fresh mail from Gmail and upsert it.
+
+    Read-only: this only *fetches* (``gmail.readonly``). Ingestion is idempotent,
+    so re-syncing never duplicates a message and never clobbers local state —
+    read/star/archive flags, predictions, and labels are all preserved.
+    """
+    try:
+        source = build_email_source("gmail")
+        emails = list(source.fetch(limit=req.limit))
+    except GmailNotConfigured as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # network / auth / API errors
+        raise HTTPException(status_code=502, detail=f"Gmail sync failed: {exc}") from exc
+
+    repo = open_repository(get_settings().db_path)
+    try:
+        before = repo.count()
+        repo.add_many(emails)
+        total = repo.count()
+        return {"added": total - before, "fetched": len(emails), "total": total}
+    finally:
+        repo.close()
 
 
 # --- custom labels --------------------------------------------------------

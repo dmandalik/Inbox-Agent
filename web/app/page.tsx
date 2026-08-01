@@ -88,6 +88,13 @@ const Close = () => (
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 );
+const Refresh = ({ spinning }: { spinning?: boolean }) => (
+  <svg {...svgProps} className={spinning ? "spin" : undefined}>
+    <polyline points="23 4 23 10 17 10" />
+    <polyline points="1 20 1 14 7 14" />
+    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15" />
+  </svg>
+);
 
 type Filter = "none" | "starred" | "unread";
 
@@ -129,6 +136,9 @@ export default function Console() {
       .then((r) => setChatList(r.chats))
       .catch(() => {});
   }, []);
+
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
 
   const refreshCats = useCallback(() => {
     api.categories().then(setCats).catch((e) => setError(String(e)));
@@ -240,6 +250,39 @@ export default function Console() {
     },
     [loadLabels, loadEmails],
   );
+
+  const doSync = useCallback(
+    async (silent = false) => {
+      if (!silent) setSyncing(true);
+      try {
+        const r = await api.sync();
+        if (r.added > 0) {
+          loadEmails();
+          refreshCats();
+          setSyncMsg(`${r.added} new`);
+        } else if (!silent) {
+          setSyncMsg("Up to date");
+        }
+      } catch (e) {
+        if (!silent) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!silent) setSyncing(false);
+      }
+    },
+    [loadEmails, refreshCats],
+  );
+
+  // Auto-pull fresh mail from Gmail every 2 minutes (silent; errors ignored).
+  useEffect(() => {
+    const id = setInterval(() => doSync(true), 120_000);
+    return () => clearInterval(id);
+  }, [doSync]);
+
+  useEffect(() => {
+    if (!syncMsg) return;
+    const id = setTimeout(() => setSyncMsg(null), 4000);
+    return () => clearTimeout(id);
+  }, [syncMsg]);
 
   const autoOrganize = useCallback(async () => {
     setOrganizing(true);
@@ -367,8 +410,17 @@ export default function Console() {
         <div className="top-right">
           <span className="env">
             <span className="live" />
-            {cats ? `${cats.total} emails · ${cats.flagged} flagged` : "connecting…"}
+            {syncMsg ?? (cats ? `${cats.total} emails · ${cats.flagged} flagged` : "connecting…")}
           </span>
+          <button
+            className="icon-btn"
+            onClick={() => doSync(false)}
+            disabled={syncing}
+            title="Sync with Gmail"
+            aria-label="Sync with Gmail"
+          >
+            <Refresh spinning={syncing} />
+          </button>
           <ThemeToggle />
         </div>
       </header>

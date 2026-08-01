@@ -11,7 +11,7 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 167 tests green, `ruff` clean, full-history `gitleaks` clean.
+Current state: 169 tests green, `ruff` clean, full-history `gitleaks` clean.
 Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
 BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only

@@ -266,7 +266,13 @@ API endpoints: `/api/health`, `/api/categories`, `/api/emails` (with
 `/api/emails/{id}`, `PATCH /api/emails/{id}/state`, `POST /api/ask`,
 `POST /api/chat`, `/api/chats`, `/api/chats/{id}`,
 `POST /api/emails/{id}/draft`, `/api/scan`, `/api/labels` (+ `PATCH`/`DELETE`
-`/api/labels/{id}`), `POST /api/emails/{id}/labels`, `POST /api/labels/apply`.
+`/api/labels/{id}`), `POST /api/emails/{id}/labels`, `POST /api/labels/apply`,
+`POST /api/sync`.
+
+**Live sync.** A Sync button (and a background poll every 2 minutes) pulls fresh
+mail from Gmail via `POST /api/sync`. This is still **read-only** — it only
+*fetches* — and ingestion is idempotent, so re-syncing never duplicates a message
+or clobbers local read/star/archive/label state.
 
 **Custom labels.** You can create your own color-coded labels, flag emails with
 them by hand, and give each label a plain-English meaning ("anything about money,
