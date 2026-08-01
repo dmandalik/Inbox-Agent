@@ -989,7 +989,12 @@ function Reader({
         </div>
       )}
 
-      <div className="body-text">{email.body}</div>
+      {email.body_html ? (
+        // Sanitized server-side (nh3) — see api.py / sanitize.py.
+        <div className="body-html" dangerouslySetInnerHTML={{ __html: email.body_html }} />
+      ) : (
+        <div className="body-text">{email.body}</div>
+      )}
 
       <div className="reader-foot">
         <button className="draft-btn" onClick={runDraft} disabled={drafting}>

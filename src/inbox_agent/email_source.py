@@ -265,6 +265,16 @@ def _extract_body(payload: dict) -> str:
     return _html_to_text(raw) if "<" in raw and ">" in raw else raw
 
 
+def _extract_html(payload: dict) -> str:
+    """The original text/html part, if any — kept so the UI can render real
+    formatting. It is sanitized before display (never rendered raw)."""
+    html = _find_mime(payload, "text/html")
+    if html and html.strip():
+        return html
+    raw = _decode_b64(payload.get("body", {}).get("data"))
+    return raw if ("<" in raw and ">" in raw) else ""
+
+
 def _date_iso(raw: dict, headers: list[dict]) -> str:
     """Normalize a message timestamp to ISO 8601, matching the synthetic corpus.
 
@@ -300,6 +310,7 @@ def _message_to_email(raw: dict) -> Email:
         cc=[addr for _, addr in getaddresses([_header(headers, "Cc")]) if addr],
         subject=_decode_words(_header(headers, "Subject")),
         body=_extract_body(payload),
+        body_html=_extract_html(payload),
         labels=raw.get("labelIds", []),
         category=None,
     )

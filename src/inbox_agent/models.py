@@ -22,7 +22,8 @@ class Email:
     to: list[str] = field(default_factory=list)
     cc: list[str] = field(default_factory=list)
     subject: str = ""
-    body: str = ""
+    body: str = ""  # plain text — used for retrieval, triage, summaries
+    body_html: str = ""  # original HTML, if any — rendered (sanitized) in the UI
     labels: list[str] = field(default_factory=list)
     category: str | None = None
 

@@ -274,6 +274,13 @@ mail from Gmail via `POST /api/sync`. This is still **read-only** — it only
 *fetches* — and ingestion is idempotent, so re-syncing never duplicates a message
 or clobbers local read/star/archive/label state.
 
+**Real formatting.** The original email HTML is kept and rendered so messages
+look like they do in Gmail. It is never rendered raw: every body is sanitized
+server-side with an `nh3` allowlist (`sanitize.py`) that strips `<script>`, event
+handlers, `javascript:` URLs, and iframes/forms while keeping tags and inline
+styles. The plain-text body is still what retrieval, triage, and chat use. (Mail
+ingested before this feature gets its HTML backfilled the next time you sync.)
+
 **Custom labels.** You can create your own color-coded labels, flag emails with
 them by hand, and give each label a plain-English meaning ("anything about money,
 bills, or invoices"). **Auto-organize** then reads those instructions and tags

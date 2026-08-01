@@ -359,3 +359,11 @@ button { font-family: inherit; }
 /* --- Gmail sync -------------------------------------------------------- */
 .spin { animation: spin 0.9s linear infinite; transform-origin: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- rendered (sanitized) email HTML ----------------------------------- */
+.body-html { padding: 10px 22px 22px; font-size: 14px; color: var(--ink); line-height: 1.6; overflow-x: auto; }
+.body-html img { max-width: 100%; height: auto; }
+.body-html table { max-width: 100%; border-collapse: collapse; }
+.body-html a { color: var(--accent); }
+.body-html pre { white-space: pre-wrap; overflow-x: auto; }
+.body-html blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--hairline-strong); color: var(--ink-2); }

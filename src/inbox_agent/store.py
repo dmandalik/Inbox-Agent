@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS emails (
     cc_json            TEXT NOT NULL DEFAULT '[]',
     subject            TEXT NOT NULL DEFAULT '',
     body               TEXT NOT NULL DEFAULT '',
+    body_html          TEXT NOT NULL DEFAULT '',  -- original HTML (sanitized on display)
     labels_json        TEXT NOT NULL DEFAULT '[]',
     category           TEXT,   -- ground truth (synthetic mail only)
     predicted_category TEXT,   -- triage output
@@ -98,9 +99,10 @@ _STATE_COLUMNS = {
 
 
 def _ensure_state_columns(conn: sqlite3.Connection) -> None:
-    """Add any missing state columns to an existing DB (lightweight migration)."""
+    """Add any missing state / later-added columns (lightweight migration)."""
+    added = {**_STATE_COLUMNS, "body_html": "TEXT NOT NULL DEFAULT ''"}
     have = {r["name"] for r in conn.execute("PRAGMA table_info(emails)").fetchall()}
-    for name, decl in _STATE_COLUMNS.items():
+    for name, decl in added.items():
         if name not in have:
             conn.execute(f"ALTER TABLE emails ADD COLUMN {name} {decl}")
     conn.commit()
@@ -118,6 +120,7 @@ _SOURCE_COLUMNS = (
     "cc_json",
     "subject",
     "body",
+    "body_html",
     "labels_json",
     "category",
 )
@@ -141,6 +144,7 @@ def _to_email(row: sqlite3.Row) -> Email:
         cc=json.loads(row["cc_json"]),
         subject=row["subject"],
         body=row["body"],
+        body_html=row["body_html"],
         labels=json.loads(row["labels_json"]),
         category=row["category"],
     )

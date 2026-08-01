@@ -41,6 +41,7 @@ export type EmailDetail = EmailSummary & {
   cc: string[];
   mail_labels: string[];
   body: string;
+  body_html: string; // server-sanitized; safe to render
 };
 
 export type CategoryCount = { id: string; count: number };

@@ -33,6 +33,7 @@ from inbox_agent.llm import build_llm_client
 from inbox_agent.models import Email
 from inbox_agent.rag import is_local_llm
 from inbox_agent.retrieval import build_retriever
+from inbox_agent.sanitize import sanitize_html
 from inbox_agent.security import detect_injection
 from inbox_agent.store import open_repository
 from inbox_agent.summarize import Summarizer
@@ -202,6 +203,9 @@ def get_email(message_id: str) -> dict:
         "cc": email.cc,
         "mail_labels": email.labels,
         "body": email.body,
+        # Sanitized on the way out so the client can render real formatting
+        # without ever touching raw, untrusted HTML.
+        "body_html": sanitize_html(email.body_html),
     }
 
 
