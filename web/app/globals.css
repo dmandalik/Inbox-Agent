@@ -75,7 +75,15 @@ body {
 button { font-family: inherit; }
 .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
-.app { max-width: 1200px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; }
+.app { max-width: 1200px; margin: 0 auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-height: 100vh; transition: max-width .18s ease, margin .18s ease; }
+
+/* When the chat popup is open, shift the app left and reserve room on the right
+   so the popup never covers the reading pane (wide screens only — on narrow
+   screens the popup goes full-width). */
+@media (min-width: 1024px) {
+  .app.chat-open { max-width: calc(100vw - 470px); margin-left: 24px; margin-right: auto; }
+  .app.chat-open.chat-expanded { max-width: calc(100vw - 830px); }
+}
 
 .topbar { display: flex; align-items: center; justify-content: space-between; }
 .brand { display: flex; align-items: center; gap: 12px; }

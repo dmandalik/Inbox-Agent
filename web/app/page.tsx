@@ -266,7 +266,7 @@ export default function Console() {
     selectedCat === "all" ? "All mail" : CAT_LABEL[selectedCat] ?? selectedCat;
 
   return (
-    <div className="app">
+    <div className={`app${chatOpen ? " chat-open" : ""}${chatOpen && chatExpanded ? " chat-expanded" : ""}`}>
       <header className="topbar">
         <div className="brand">
           <div className="mark" aria-hidden>
