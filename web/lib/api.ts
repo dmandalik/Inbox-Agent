@@ -11,6 +11,19 @@ export type EmailSummary = {
   snippet: string;
   category: string;
   flagged: string[];
+  starred: boolean;
+  read: boolean;
+  archived: boolean;
+};
+
+export type EmailFilters = {
+  category?: string;
+  sort?: string;
+  order?: "asc" | "desc";
+  q?: string;
+  starred?: boolean;
+  unread?: boolean;
+  archived?: boolean;
 };
 
 export type EmailDetail = EmailSummary & {
@@ -31,6 +44,28 @@ export type AskHit = {
   score: number;
 };
 
+export type ChatCitation = {
+  id: string;
+  from_name: string;
+  subject: string;
+  date: string;
+  summary: string;
+};
+export type ChatResponse = {
+  chat_id: string;
+  reply: string;
+  widened: boolean;
+  kind: string;
+  citations: ChatCitation[];
+};
+export type ChatListItem = { id: string; title: string; updated_at: string };
+export type ChatHistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+  citations: ChatCitation[];
+  created_at: string;
+};
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`/api${path}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
@@ -39,11 +74,35 @@ async function get<T>(path: string): Promise<T> {
 
 export const api = {
   categories: () => get<Categories>("/categories"),
-  emails: (category: string) =>
-    get<{ emails: EmailSummary[]; count: number }>(
-      `/emails${category && category !== "all" ? `?category=${category}` : ""}`,
-    ),
+  emails: (filters: EmailFilters = {}) => {
+    const p = new URLSearchParams();
+    if (filters.category && filters.category !== "all" && filters.category !== "flagged") {
+      p.set("category", filters.category);
+    } else if (filters.category === "flagged") {
+      p.set("category", "flagged");
+    }
+    if (filters.sort) p.set("sort", filters.sort);
+    if (filters.order) p.set("order", filters.order);
+    if (filters.q) p.set("q", filters.q);
+    if (filters.starred) p.set("starred", "true");
+    if (filters.unread) p.set("unread", "true");
+    if (filters.archived) p.set("archived", "true");
+    const qs = p.toString();
+    return get<{ emails: EmailSummary[]; count: number }>(`/emails${qs ? `?${qs}` : ""}`);
+  },
   email: (id: string) => get<EmailDetail>(`/emails/${encodeURIComponent(id)}`),
+  setState: async (
+    id: string,
+    patch: { starred?: boolean; read?: boolean; archived?: boolean },
+  ): Promise<EmailSummary> => {
+    const res = await fetch(`/api/emails/${encodeURIComponent(id)}/state`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) throw new Error(`setState failed: ${res.status}`);
+    return res.json();
+  },
   ask: async (question: string, k = 5): Promise<{ question: string; hits: AskHit[] }> => {
     const res = await fetch("/api/ask", {
       method: "POST",
@@ -51,6 +110,33 @@ export const api = {
       body: JSON.stringify({ question, k }),
     });
     if (!res.ok) throw new Error(`ask failed: ${res.status}`);
+    return res.json();
+  },
+  chat: async (message: string, chatId?: string): Promise<ChatResponse> => {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message, chat_id: chatId }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null);
+      throw new Error(detail?.detail || `chat failed: ${res.status}`);
+    }
+    return res.json();
+  },
+  chats: () => get<{ chats: ChatListItem[] }>("/chats"),
+  chatHistory: (id: string) =>
+    get<{ chat_id: string; messages: ChatHistoryMessage[] }>(`/chats/${encodeURIComponent(id)}`),
+  draftReply: async (id: string, guidance?: string): Promise<{ id: string; draft: string }> => {
+    const res = await fetch(`/api/emails/${encodeURIComponent(id)}/draft`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ guidance }),
+    });
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null);
+      throw new Error(detail?.detail || `draft failed: ${res.status}`);
+    }
     return res.json();
   },
 };

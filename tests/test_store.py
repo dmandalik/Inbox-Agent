@@ -78,6 +78,65 @@ def test_prediction_and_ground_truth_maps():
     assert r.prediction_backends() == {"stub"}
 
 
+def test_state_defaults_are_false():
+    r = repo()
+    r.add(sample())
+    assert r.get_state("msg-0001") == {"starred": False, "read": False, "archived": False}
+    assert r.states()["msg-0001"]["starred"] is False
+
+
+def test_set_state_updates_only_given_fields():
+    r = repo()
+    r.add(sample())
+    r.set_state("msg-0001", starred=True)
+    r.set_state("msg-0001", read=True)  # must not reset starred
+    st = r.get_state("msg-0001")
+    assert st == {"starred": True, "read": True, "archived": False}
+    r.set_state("msg-0001", starred=False)
+    assert r.get_state("msg-0001")["starred"] is False
+
+
+def test_set_state_unknown_id_raises():
+    with pytest.raises(KeyError):
+        repo().set_state("ghost", starred=True)
+
+
+def test_reingestion_preserves_state():
+    r = repo()
+    r.add(sample())
+    r.set_state("msg-0001", starred=True, read=True)
+    r.add(sample())  # upsert must not wipe user state
+    assert r.get_state("msg-0001") == {"starred": True, "read": True, "archived": False}
+
+
+def test_migration_adds_state_columns_to_an_old_db(tmp_path):
+    """Opening a pre-state database must add the columns, not crash or wipe it."""
+    import sqlite3
+
+    db = tmp_path / "old.db"
+    conn = sqlite3.connect(str(db))
+    conn.execute(
+        "CREATE TABLE emails (message_id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, "
+        "date TEXT NOT NULL, from_addr TEXT NOT NULL, from_name TEXT DEFAULT '', "
+        "to_json TEXT DEFAULT '[]', cc_json TEXT DEFAULT '[]', subject TEXT DEFAULT '', "
+        "body TEXT DEFAULT '', labels_json TEXT DEFAULT '[]', category TEXT, "
+        "predicted_category TEXT, predicted_backend TEXT, predicted_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO emails (message_id, thread_id, date, from_addr) "
+        "VALUES ('m1', 't', '2026-01-01T00:00:00+00:00', 'a@example.com')"
+    )
+    conn.commit()
+    conn.close()
+
+    r = open_repository(str(db))  # triggers the migration
+    assert r.count() == 1  # existing row survived
+    assert r.get_state("m1") == {"starred": False, "read": False, "archived": False}
+    r.set_state("m1", starred=True)
+    assert r.get_state("m1")["starred"] is True
+    r.close()
+
+
 def test_by_thread_returns_messages_oldest_first():
     r = repo()
     r.add_many(generate_corpus())

@@ -20,7 +20,7 @@ zero-shot LLM (or a keyless rule-based stub) → score with an eval harness.
 |------:|------|-------|
 | 0 | Setup & ingestion (synthetic + read-only Gmail, SQLite) | ✅ Milestone 1 |
 | 1 | Triage + eval harness | ✅ Milestone 1 |
-| 2 | Ask-my-inbox retrieval (BM25; dense/hybrid next) | 🟡 in progress |
+| 2 | Ask-my-inbox retrieval (BM25) + conversational chat (local LLM) | 🟡 in progress |
 | 3 | Injection defense + threat model (actions next) | 🟡 in progress |
 | 4 | Observability, cost, CI-gated evals | ⬜ planned |
 | 5 | Depth arc (MCP server *or* feedback-loop ML) | ⬜ planned |
@@ -208,6 +208,29 @@ emails are passed to the model as delimited, untrusted data with an instruction
 to ignore any commands inside them — the same injection-defense posture as
 triage. Dense/hybrid retrieval is the remaining Phase 2 slice (`LEARNING.md`).
 
+## Chat with your inbox
+
+The web app turns retrieval into a **conversation**: ask a question, get a plain-
+language answer with the emails it used shown as clickable citations. It runs a
+turn as *rewrite (using history) → tiered retrieve → summary-grounded answer*,
+and is built to spend as few tokens as possible at scale:
+
+- **Immutable summary cache** — a received email never changes, so each is
+  summarized once and reused across every chat forever (`summarize.py`).
+- **Tiered retrieval** — search recent mail first; widen to the full inbox only
+  on a miss, so most turns never scan old history (`chat.py`).
+- **Summaries, not bodies** — the answer prompt is built from short summaries,
+  not raw emails; the full body loads only when you open one.
+- **Saved chats** — conversations persist (with a sidebar to reopen them) and
+  keep a rolling summary so per-turn cost stays flat as a chat grows.
+- **Tools before the LLM** — "how many unread from Priya?" or "star all
+  newsletters" are answered by SQL and filters with *no model call at all*
+  (`tools.py`); only open questions reach the LLM.
+
+Chat is **fail-closed to a local LLM**: `/api/chat` refuses a cloud endpoint, so
+a real inbox is never sent off the machine. The full design (and the
+millions-of-users cost model) is in [`docs/CHAT_DESIGN.md`](docs/CHAT_DESIGN.md).
+
 ## Web app
 
 A local web UI sits on top of the CLI: a **FastAPI backend** (`api.py`) and a
@@ -231,12 +254,26 @@ npm run dev                         # http://localhost:3000
 ```
 
 Open http://localhost:3000. The frontend proxies `/api/*` to the backend, so no
-CORS setup is needed. API endpoints: `/api/health`, `/api/categories`,
-`/api/emails` (+ `?category=`), `/api/emails/{id}`, `POST /api/ask`, `/api/scan`.
+CORS setup is needed.
 
-Reply drafting is the next feature; the "Draft a reply" button is present but
-disabled until it ships (and it will use the draft-commit pattern — you approve
-before anything is created).
+**Inbox management:** star/flag an email, mark read/unread (opening marks read),
+archive, sort (newest / sender / subject / category), filter (starred, unread,
+by category), and keyword search over the current view. State is stored per
+email and survives re-ingestion.
+
+API endpoints: `/api/health`, `/api/categories`, `/api/emails` (with
+`category`/`sender`/`q`/`starred`/`unread`/`archived`/`sort`/`order`),
+`/api/emails/{id}`, `PATCH /api/emails/{id}/state`, `POST /api/ask`,
+`POST /api/chat`, `/api/chats`, `/api/chats/{id}`,
+`POST /api/emails/{id}/draft`, `/api/scan`.
+
+The chat lives in a floating popup (bottom-right, expandable to show a
+recent-chats sidebar) so the inbox stays visible; the top bar is inbox search.
+
+**Reply drafting** is wired up: the "Draft a reply" button generates a suggested
+reply with the local LLM (`drafting.py`), shown in an editable box with a copy
+button. It is a *draft only* — nothing is ever sent; the email being replied to
+is treated as untrusted, and the endpoint fails closed on a non-local LLM.
 
 ## Security: prompt injection
 

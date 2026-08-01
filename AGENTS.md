@@ -11,7 +11,7 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 106 tests green, `ruff` clean, full-history `gitleaks` clean.
+Current state: 159 tests green, `ruff` clean, full-history `gitleaks` clean.
 Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
 BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only
@@ -47,8 +47,13 @@ src/inbox_agent/
   triage.py        Classifier + StubClassifier (rules) + LLMClassifier (zero-shot).
   retrieval.py     Retriever + BM25 "ask my inbox" + recall@k/MRR eval.
   rag.py           Grounded answer generation over hits + is_local_llm guard.
+  summarize.py     Immutable per-message summary cache (chat context, L1).
+  tools.py         Structured no-LLM tools: parse_intent + count/select/actions.
+  chat.py          Conversational agent: tools first, else tiered retrieve + LLM.
+  drafting.py      Reply drafting (local LLM only; a draft, never sends).
   security.py      Injection attack suite + detect_injection backstop.
-  api.py           FastAPI backend for the web UI (read-only, LLM-free).
+  api.py           FastAPI backend for the web UI. Read-only mail; /api/chat is
+                   local-LLM-only (fail closed). See docs/CHAT_DESIGN.md.
   evals.py         P/R/F1, confusion matrix, text + Markdown reports (stdlib).
   config.py        Env-driven settings; require_llm() validates on use.
   obs.py           Logging, secret redaction, traced() seam (Phase-4 hook).
@@ -69,7 +74,9 @@ Emails join on `message_id`. Stored fields: `message_id`, `thread_id`, `date`
 (ISO), `from_addr`, `from_name`, `to`, `cc`, `subject`, `body`, `labels`,
 `category` (ground truth). Triage output is kept in *separate* columns —
 `predicted_category`, `predicted_backend`, `predicted_at` — so a label and a
-prediction can never be conflated.
+prediction can never be conflated. User state (starred / read / archived) is
+kept in its own columns and preserved across re-ingestion; a lightweight
+migration adds these columns to older databases on open.
 
 Re-ingestion is idempotent: `add_many()` upserts on `message_id`, refreshing
 the source columns while **preserving** prediction columns, so re-ingesting

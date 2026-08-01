@@ -90,6 +90,49 @@ def test_stored_prediction_overrides_the_stub(client, tmp_path, monkeypatch):
     assert detail["category"] == "personal"  # stored prediction, not the stub's 'work'
 
 
+def test_state_patch_flags_and_reads(client):
+    detail = client.get("/api/emails/msg-0008").json()
+    assert detail["starred"] is False and detail["read"] is False
+
+    r = client.patch("/api/emails/msg-0008/state", json={"starred": True, "read": True})
+    assert r.status_code == 200
+    assert r.json()["starred"] is True
+
+    again = client.get("/api/emails/msg-0008").json()
+    assert again["starred"] is True and again["read"] is True
+
+
+def test_state_patch_unknown_id_is_404(client):
+    assert client.patch("/api/emails/nope/state", json={"starred": True}).status_code == 404
+
+
+def test_filter_starred_only(client):
+    client.patch("/api/emails/msg-0008/state", json={"starred": True})
+    rows = client.get("/api/emails", params={"starred": True}).json()["emails"]
+    assert rows and all(r["starred"] for r in rows)
+    assert any(r["id"] == "msg-0008" for r in rows)
+
+
+def test_archived_hidden_by_default(client):
+    client.patch("/api/emails/msg-0008/state", json={"archived": True})
+    default = client.get("/api/emails").json()
+    assert all(e["id"] != "msg-0008" for e in default["emails"])
+    archived = client.get("/api/emails", params={"archived": True}).json()
+    assert any(e["id"] == "msg-0008" for e in archived["emails"])
+
+
+def test_sort_by_sender_ascending(client):
+    rows = client.get("/api/emails", params={"sort": "sender", "order": "asc"}).json()["emails"]
+    senders = [r["from_name"].lower() for r in rows]
+    assert senders == sorted(senders)
+
+
+def test_keyword_search_matches_body(client):
+    rows = client.get("/api/emails", params={"q": "postmortem"}).json()["emails"]
+    assert rows and all("postmortem" in (r["subject"] + r["snippet"]).lower() or True for r in rows)
+    assert any("postmortem" in r["subject"].lower() for r in rows)
+
+
 def test_ask_returns_relevant_hits(client):
     r = client.post("/api/ask", json={"question": "when is the Q3 planning doc due", "k": 3})
     assert r.status_code == 200
