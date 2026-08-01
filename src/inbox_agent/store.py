@@ -68,6 +68,23 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     created_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_chat ON chat_messages(chat_id, id);
+
+-- User-defined, color-coded labels. `instructions` is a plain-English rule the
+-- LLM uses to auto-apply the label ("anything about money, bills, invoices").
+CREATE TABLE IF NOT EXISTS labels (
+    id           TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    color        TEXT NOT NULL DEFAULT '#2f6bea',
+    instructions TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS email_labels (
+    message_id TEXT NOT NULL,
+    label_id   TEXT NOT NULL,
+    PRIMARY KEY (message_id, label_id)
+);
+CREATE INDEX IF NOT EXISTS idx_email_labels_label ON email_labels(label_id);
+CREATE INDEX IF NOT EXISTS idx_email_labels_msg ON email_labels(message_id);
 """
 
 # User-set state columns, kept separate from ground truth and predictions.
@@ -345,6 +362,84 @@ class EmailRepository:
     def set_chat_title(self, chat_id: str, title: str) -> None:
         self.conn.execute("UPDATE chats SET title=? WHERE id=?", (title, chat_id))
         self.conn.commit()
+
+    # --- custom labels -----------------------------------------------------
+    def create_label(self, label_id: str, name: str, color: str, instructions: str = "") -> None:
+        self.conn.execute(
+            "INSERT INTO labels (id, name, color, instructions, created_at) VALUES (?, ?, ?, ?, ?)",
+            (label_id, name, color, instructions, datetime.now(UTC).isoformat()),
+        )
+        self.conn.commit()
+
+    def list_labels(self) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT id, name, color, instructions FROM labels ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_label(self, label_id: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT id, name, color, instructions FROM labels WHERE id=?", (label_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def update_label(
+        self,
+        label_id: str,
+        *,
+        name: str | None = None,
+        color: str | None = None,
+        instructions: str | None = None,
+    ) -> None:
+        fields = {"name": name, "color": color, "instructions": instructions}
+        changes = {k: v for k, v in fields.items() if v is not None}
+        if not changes:
+            return
+        assigns = ", ".join(f"{k}=?" for k in changes)  # keys are fixed literals
+        cur = self.conn.execute(
+            f"UPDATE labels SET {assigns} WHERE id=?", [*changes.values(), label_id]
+        )
+        self.conn.commit()
+        if cur.rowcount == 0:
+            raise KeyError(f"unknown label_id: {label_id}")
+
+    def delete_label(self, label_id: str) -> None:
+        self.conn.execute("DELETE FROM email_labels WHERE label_id=?", (label_id,))
+        self.conn.execute("DELETE FROM labels WHERE id=?", (label_id,))
+        self.conn.commit()
+
+    def set_email_label(self, message_id: str, label_id: str, on: bool) -> None:
+        if on:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO email_labels (message_id, label_id) VALUES (?, ?)",
+                (message_id, label_id),
+            )
+        else:
+            self.conn.execute(
+                "DELETE FROM email_labels WHERE message_id=? AND label_id=?",
+                (message_id, label_id),
+            )
+        self.conn.commit()
+
+    def labels_for(self, message_id: str) -> list[str]:
+        rows = self.conn.execute(
+            "SELECT label_id FROM email_labels WHERE message_id=?", (message_id,)
+        ).fetchall()
+        return [r["label_id"] for r in rows]
+
+    def email_labels_map(self) -> dict[str, list[str]]:
+        """message_id -> [label_id, ...] for every labelled email."""
+        rows = self.conn.execute("SELECT message_id, label_id FROM email_labels").fetchall()
+        out: dict[str, list[str]] = {}
+        for r in rows:
+            out.setdefault(r["message_id"], []).append(r["label_id"])
+        return out
+
+    def label_counts(self) -> dict[str, int]:
+        rows = self.conn.execute(
+            "SELECT label_id, COUNT(*) AS n FROM email_labels GROUP BY label_id"
+        ).fetchall()
+        return {r["label_id"]: r["n"] for r in rows}
 
     def close(self) -> None:
         self.conn.close()

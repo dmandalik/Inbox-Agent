@@ -11,9 +11,18 @@ export type EmailSummary = {
   snippet: string;
   category: string;
   flagged: string[];
+  labels: string[];
   starred: boolean;
   read: boolean;
   archived: boolean;
+};
+
+export type Label = {
+  id: string;
+  name: string;
+  color: string;
+  instructions: string;
+  count?: number;
 };
 
 export type EmailFilters = {
@@ -21,6 +30,7 @@ export type EmailFilters = {
   sort?: string;
   order?: "asc" | "desc";
   q?: string;
+  label?: string;
   starred?: boolean;
   unread?: boolean;
   archived?: boolean;
@@ -29,7 +39,7 @@ export type EmailFilters = {
 export type EmailDetail = EmailSummary & {
   to: string[];
   cc: string[];
-  labels: string[];
+  mail_labels: string[];
   body: string;
 };
 
@@ -72,6 +82,19 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
+async function send<T>(path: string, method: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method,
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => null);
+    throw new Error(detail?.detail || `${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export const api = {
   categories: () => get<Categories>("/categories"),
   emails: (filters: EmailFilters = {}) => {
@@ -84,6 +107,7 @@ export const api = {
     if (filters.sort) p.set("sort", filters.sort);
     if (filters.order) p.set("order", filters.order);
     if (filters.q) p.set("q", filters.q);
+    if (filters.label) p.set("label", filters.label);
     if (filters.starred) p.set("starred", "true");
     if (filters.unread) p.set("unread", "true");
     if (filters.archived) p.set("archived", "true");
@@ -124,6 +148,20 @@ export const api = {
     }
     return res.json();
   },
+  labels: () => get<{ labels: Label[] }>("/labels"),
+  createLabel: (name: string, color: string, instructions: string): Promise<Label> =>
+    send("/labels", "POST", { name, color, instructions }),
+  updateLabel: (id: string, patch: Partial<Label>): Promise<Label> =>
+    send(`/labels/${encodeURIComponent(id)}`, "PATCH", patch),
+  deleteLabel: (id: string): Promise<{ deleted: string }> =>
+    send(`/labels/${encodeURIComponent(id)}`, "DELETE"),
+  setEmailLabel: (
+    id: string,
+    labelId: string,
+    on: boolean,
+  ): Promise<{ id: string; labels: string[] }> =>
+    send(`/emails/${encodeURIComponent(id)}/labels`, "POST", { label_id: labelId, on }),
+  applyLabels: (): Promise<{ labelled: number; scanned: number }> => send("/labels/apply", "POST"),
   chats: () => get<{ chats: ChatListItem[] }>("/chats"),
   chatHistory: (id: string) =>
     get<{ chat_id: string; messages: ChatHistoryMessage[] }>(`/chats/${encodeURIComponent(id)}`),

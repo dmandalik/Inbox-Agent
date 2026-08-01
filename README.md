@@ -265,7 +265,15 @@ API endpoints: `/api/health`, `/api/categories`, `/api/emails` (with
 `category`/`sender`/`q`/`starred`/`unread`/`archived`/`sort`/`order`),
 `/api/emails/{id}`, `PATCH /api/emails/{id}/state`, `POST /api/ask`,
 `POST /api/chat`, `/api/chats`, `/api/chats/{id}`,
-`POST /api/emails/{id}/draft`, `/api/scan`.
+`POST /api/emails/{id}/draft`, `/api/scan`, `/api/labels` (+ `PATCH`/`DELETE`
+`/api/labels/{id}`), `POST /api/emails/{id}/labels`, `POST /api/labels/apply`.
+
+**Custom labels.** You can create your own color-coded labels, flag emails with
+them by hand, and give each label a plain-English meaning ("anything about money,
+bills, or invoices"). **Auto-organize** then reads those instructions and tags
+matching emails with the local LLM (`labeling.py`, fail-closed to a local model).
+Auto-apply precision tracks the model: a small model like `llama3.2` over-applies;
+point `LLM_MODEL` at a stronger local model (e.g. `qwen2.5:7b`) for better results.
 
 The chat lives in a floating popup (bottom-right, expandable to show a
 recent-chats sidebar) so the inbox stays visible; the top bar is inbox search.

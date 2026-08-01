@@ -13,6 +13,7 @@ import {
   type ChatListItem,
   type EmailDetail,
   type EmailSummary,
+  type Label,
 } from "@/lib/api";
 
 type ChatMsg = {
@@ -101,6 +102,18 @@ export default function Console() {
   const [detail, setDetail] = useState<EmailDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Custom color-coded labels.
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [labelFilter, setLabelFilter] = useState<string | null>(null);
+  const [organizing, setOrganizing] = useState(false);
+
+  const loadLabels = useCallback(() => {
+    api
+      .labels()
+      .then((r) => setLabels(r.labels))
+      .catch(() => {});
+  }, []);
+
   // Conversational agent over the inbox.
   const [chatOpen, setChatOpen] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
@@ -126,7 +139,8 @@ export default function Console() {
   const loadEmails = useCallback(async () => {
     try {
       const r = await api.emails({
-        category: selectedCat,
+        category: labelFilter ? "all" : selectedCat,
+        label: labelFilter || undefined,
         sort,
         order: sort === "date" ? "desc" : "asc",
         q: search || undefined,
@@ -142,7 +156,7 @@ export default function Console() {
     } catch (e) {
       setError(String(e));
     }
-  }, [selectedCat, sort, search, filter]);
+  }, [selectedCat, sort, search, filter, labelFilter]);
 
   useEffect(() => {
     loadEmails();
@@ -151,6 +165,8 @@ export default function Console() {
   useEffect(() => {
     if (chatOpen) loadChatList();
   }, [chatOpen, loadChatList]);
+
+  useEffect(() => loadLabels(), [loadLabels]);
 
   // Load the open email, and mark it read once.
   useEffect(() => {
@@ -177,8 +193,67 @@ export default function Console() {
   }, [selectedId]);
 
   const pickCategory = useCallback((cat: string) => {
+    setLabelFilter(null);
     setSelectedCat(cat);
   }, []);
+
+  const selectLabel = useCallback((id: string) => {
+    setLabelFilter((cur) => (cur === id ? null : id));
+  }, []);
+
+  const createLabel = useCallback(
+    async (name: string, color: string, instructions: string) => {
+      try {
+        await api.createLabel(name, color, instructions);
+        loadLabels();
+      } catch (e) {
+        setError(String(e));
+      }
+    },
+    [loadLabels],
+  );
+
+  const deleteLabel = useCallback(
+    async (id: string) => {
+      try {
+        await api.deleteLabel(id);
+        setLabelFilter((cur) => (cur === id ? null : cur));
+        loadLabels();
+        loadEmails();
+      } catch (e) {
+        setError(String(e));
+      }
+    },
+    [loadLabels, loadEmails],
+  );
+
+  const toggleEmailLabel = useCallback(
+    async (messageId: string, labelId: string, on: boolean) => {
+      try {
+        const r = await api.setEmailLabel(messageId, labelId, on);
+        setDetail((d) => (d && d.id === messageId ? { ...d, labels: r.labels } : d));
+        loadLabels();
+        loadEmails();
+      } catch (e) {
+        setError(String(e));
+      }
+    },
+    [loadLabels, loadEmails],
+  );
+
+  const autoOrganize = useCallback(async () => {
+    setOrganizing(true);
+    try {
+      await api.applyLabels();
+      loadLabels();
+      loadEmails();
+      if (selectedId) api.email(selectedId).then(setDetail).catch(() => {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOrganizing(false);
+    }
+  }, [loadLabels, loadEmails, selectedId]);
 
   const sendChat = useCallback(
     async (text: string) => {
@@ -260,10 +335,19 @@ export default function Console() {
     return m;
   }, [cats]);
 
+  const labelById = useMemo(() => {
+    const m: Record<string, Label> = {};
+    labels.forEach((l) => (m[l.id] = l));
+    return m;
+  }, [labels]);
+
   const rows: EmailSummary[] = emails;
 
-  const listTitle =
-    selectedCat === "all" ? "All mail" : CAT_LABEL[selectedCat] ?? selectedCat;
+  const listTitle = labelFilter
+    ? labels.find((l) => l.id === labelFilter)?.name ?? "Label"
+    : selectedCat === "all"
+      ? "All mail"
+      : CAT_LABEL[selectedCat] ?? selectedCat;
 
   return (
     <div className={`app${chatOpen ? " chat-open" : ""}${chatOpen && chatExpanded ? " chat-expanded" : ""}`}>
@@ -346,6 +430,16 @@ export default function Console() {
               <span className="cat-name">Flagged</span>
               <span className="cat-count mono">{cats?.flagged ?? ""}</span>
             </button>
+
+            <LabelRail
+              labels={labels}
+              activeId={labelFilter}
+              organizing={organizing}
+              onSelect={selectLabel}
+              onCreate={createLabel}
+              onDelete={deleteLabel}
+              onOrganize={autoOrganize}
+            />
           </nav>
         </aside>
 
@@ -407,6 +501,25 @@ export default function Console() {
                   </span>
                   <span className="msg-subj">{m.subject}</span>
                   <span className="msg-snip">{m.snippet}</span>
+                  {m.labels.length > 0 && (
+                    <span className="row-labels">
+                      {m.labels.map(
+                        (lid) =>
+                          labelById[lid] && (
+                            <span
+                              key={lid}
+                              className="row-label"
+                              style={{
+                                color: labelById[lid].color,
+                                background: `color-mix(in srgb, ${labelById[lid].color} 15%, transparent)`,
+                              }}
+                            >
+                              {labelById[lid].name}
+                            </span>
+                          ),
+                      )}
+                    </span>
+                  )}
                 </span>
                 <span className="row-star">
                   <span
@@ -436,8 +549,10 @@ export default function Console() {
             {detail ? (
               <Reader
                 email={detail}
+                labels={labels}
                 onStar={() => toggleStar(detail.id, !detail.starred)}
                 onArchive={() => archive(detail.id)}
+                onToggleLabel={(labelId, on) => toggleEmailLabel(detail.id, labelId, on)}
               />
             ) : (
               <div className="placeholder">Select an email to read it.</div>
@@ -661,14 +776,19 @@ function ChatWidget({
 
 function Reader({
   email,
+  labels,
   onStar,
   onArchive,
+  onToggleLabel,
 }: {
   email: EmailDetail;
+  labels: Label[];
   onStar: () => void;
   onArchive: () => void;
+  onToggleLabel: (labelId: string, on: boolean) => void;
 }) {
   const flagged = email.flagged.length > 0;
+  const [labelMenu, setLabelMenu] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [draftErr, setDraftErr] = useState<string | null>(null);
@@ -745,6 +865,55 @@ function Reader({
         )}
       </div>
 
+      <div className="label-row">
+        {email.labels.map((lid) => {
+          const l = labels.find((x) => x.id === lid);
+          if (!l) return null;
+          return (
+            <span
+              key={lid}
+              className="label-chip"
+              style={{ color: l.color, borderColor: l.color }}
+            >
+              <span className="label-dot" style={{ background: l.color }} />
+              {l.name}
+              <button
+                className="label-x"
+                onClick={() => onToggleLabel(lid, false)}
+                aria-label={`Remove ${l.name}`}
+              >
+                <Close />
+              </button>
+            </span>
+          );
+        })}
+        <span className="label-add">
+          <button className="label-add-btn" onClick={() => setLabelMenu((v) => !v)}>
+            <Plus /> Label
+          </button>
+          {labelMenu && (
+            <div className="label-menu">
+              {labels.length === 0 && <div className="label-menu-empty">No labels yet.</div>}
+              {labels
+                .filter((l) => !email.labels.includes(l.id))
+                .map((l) => (
+                  <button
+                    key={l.id}
+                    className="label-menu-item"
+                    onClick={() => {
+                      onToggleLabel(l.id, true);
+                      setLabelMenu(false);
+                    }}
+                  >
+                    <span className="label-dot" style={{ background: l.color }} />
+                    {l.name}
+                  </button>
+                ))}
+            </div>
+          )}
+        </span>
+      </div>
+
       {flagged && (
         <div className="sec warn">
           <div className="sec-head">
@@ -815,6 +984,124 @@ function Reader({
             with it.
           </div>
         </div>
+      )}
+    </>
+  );
+}
+
+const LABEL_COLORS = [
+  "#2f6bea",
+  "#7a5cf0",
+  "#0e9c9c",
+  "#1f8a6b",
+  "#c23b4e",
+  "#b0791a",
+  "#d1477a",
+  "#5a6b86",
+];
+
+function LabelRail({
+  labels,
+  activeId,
+  organizing,
+  onSelect,
+  onCreate,
+  onDelete,
+  onOrganize,
+}: {
+  labels: Label[];
+  activeId: string | null;
+  organizing: boolean;
+  onSelect: (id: string) => void;
+  onCreate: (name: string, color: string, instructions: string) => void;
+  onDelete: (id: string) => void;
+  onOrganize: () => void;
+}) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState(LABEL_COLORS[0]);
+  const [instructions, setInstructions] = useState("");
+
+  const submit = () => {
+    const n = name.trim();
+    if (!n) return;
+    onCreate(n, color, instructions.trim());
+    setName("");
+    setInstructions("");
+    setColor(LABEL_COLORS[0]);
+    setCreating(false);
+  };
+
+  return (
+    <>
+      <div className="rail-sep" />
+      <div className="rail-labels-head">
+        <span>Labels</span>
+        <button className="rail-add" onClick={() => setCreating((v) => !v)} aria-label="New label">
+          <Plus />
+        </button>
+      </div>
+
+      {labels.map((l) => (
+        <div key={l.id} className={`label-cat${activeId === l.id ? " sel" : ""}`}>
+          <button
+            className="label-cat-main"
+            aria-selected={activeId === l.id}
+            onClick={() => onSelect(l.id)}
+          >
+            <span className="dot" style={{ background: l.color }} />
+            <span className="cat-name">{l.name}</span>
+            <span className="cat-count mono">{l.count ?? 0}</span>
+          </button>
+          <button className="label-del" onClick={() => onDelete(l.id)} aria-label={`Delete ${l.name}`}>
+            <Close />
+          </button>
+        </div>
+      ))}
+
+      {creating && (
+        <div className="label-form">
+          <input
+            className="label-form-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Label name"
+            aria-label="Label name"
+          />
+          <div className="label-swatches">
+            {LABEL_COLORS.map((c) => (
+              <button
+                key={c}
+                className={`swatch${color === c ? " on" : ""}`}
+                style={{ background: c }}
+                onClick={() => setColor(c)}
+                aria-label={`color ${c}`}
+              />
+            ))}
+          </div>
+          <textarea
+            className="label-form-inst"
+            value={instructions}
+            onChange={(e) => setInstructions(e.target.value)}
+            placeholder="What does this label mean? The assistant uses this to auto-apply it — e.g. anything about money, bills, or invoices."
+            rows={3}
+            aria-label="Label instructions"
+          />
+          <div className="label-form-actions">
+            <button className="chat-mini" onClick={submit}>
+              Add
+            </button>
+            <button className="chat-mini" onClick={() => setCreating(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {labels.length > 0 && (
+        <button className="organize-btn" onClick={onOrganize} disabled={organizing}>
+          <Sparkle /> {organizing ? "Organizing…" : "Auto-organize"}
+        </button>
       )}
     </>
   );

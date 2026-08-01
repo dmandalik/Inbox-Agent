@@ -11,7 +11,7 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 159 tests green, `ruff` clean, full-history `gitleaks` clean.
+Current state: 167 tests green, `ruff` clean, full-history `gitleaks` clean.
 Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
 BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only
@@ -51,6 +51,7 @@ src/inbox_agent/
   tools.py         Structured no-LLM tools: parse_intent + count/select/actions.
   chat.py          Conversational agent: tools first, else tiered retrieve + LLM.
   drafting.py      Reply drafting (local LLM only; a draft, never sends).
+  labeling.py      Auto-apply user labels by their instructions (local LLM only).
   security.py      Injection attack suite + detect_injection backstop.
   api.py           FastAPI backend for the web UI. Read-only mail; /api/chat is
                    local-LLM-only (fail closed). See docs/CHAT_DESIGN.md.

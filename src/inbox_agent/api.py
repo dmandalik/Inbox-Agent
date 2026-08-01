@@ -43,7 +43,7 @@ app = FastAPI(title="Inbox Agent API", version=__version__)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -55,11 +55,11 @@ _classifier = StubClassifier()
 _EMPTY_STATE = {"starred": False, "read": False, "archived": False}
 
 
-def _load() -> tuple[list[Email], dict[str, str], dict[str, dict]]:
-    """Return all emails, the stored predictions map, and the state map."""
+def _load() -> tuple[list[Email], dict[str, str], dict[str, dict], dict[str, list]]:
+    """Return all emails, the predictions map, the state map, and the labels map."""
     repo = open_repository(get_settings().db_path)
     try:
-        return repo.all(), repo.predictions(), repo.states()
+        return repo.all(), repo.predictions(), repo.states(), repo.email_labels_map()
     finally:
         repo.close()
 
@@ -77,7 +77,12 @@ def _category(email: Email, preds: dict[str, str]) -> str:
     return preds.get(email.message_id) or _classifier.classify(email)
 
 
-def _summary(email: Email, preds: dict[str, str], states: dict[str, dict]) -> dict:
+def _summary(
+    email: Email,
+    preds: dict[str, str],
+    states: dict[str, dict],
+    labels: dict[str, list] | None = None,
+) -> dict:
     """List-row shape: enough to render a row, no full body."""
     return {
         "id": email.message_id,
@@ -89,6 +94,7 @@ def _summary(email: Email, preds: dict[str, str], states: dict[str, dict]) -> di
         "snippet": _snippet(email.body),
         "category": _category(email, preds),
         "flagged": detect_injection(f"{email.subject}\n{email.body}"),
+        "labels": (labels or {}).get(email.message_id, []),
         **states.get(email.message_id, _EMPTY_STATE),
     }
 
@@ -101,7 +107,7 @@ def health() -> dict:
 @app.get("/api/categories")
 def categories() -> dict:
     """Category counts over the inbox (archived mail excluded, like the list)."""
-    emails, preds, states = _load()
+    emails, preds, states, _ = _load()
     counts = dict.fromkeys(CATEGORIES, 0)
     flagged = 0
     for email in emails:
@@ -130,6 +136,7 @@ def list_emails(
     category: str | None = None,
     sender: str | None = None,
     q: str | None = None,
+    label: str | None = None,
     starred: bool | None = None,
     unread: bool | None = None,
     archived: bool = False,
@@ -143,15 +150,17 @@ def list_emails(
     (predicted-or-stub); at inbox scale this is instant. Archived mail is hidden
     unless ``archived=true``.
     """
-    emails, preds, states = _load()
+    emails, preds, states, labels = _load()
     body_by_id = {e.message_id: e.body for e in emails}
-    rows = [_summary(e, preds, states) for e in emails]
+    rows = [_summary(e, preds, states, labels) for e in emails]
 
     rows = [r for r in rows if r["archived"] == archived]
     if category == "flagged":
         rows = [r for r in rows if r["flagged"]]
     elif category and category != "all":
         rows = [r for r in rows if r["category"] == category]
+    if label:
+        rows = [r for r in rows if label in r["labels"]]
     if sender:
         needle = sender.lower()
         rows = [r for r in rows if needle in f"{r['from_name']} {r['from_addr']}".lower()]
@@ -179,15 +188,18 @@ def get_email(message_id: str) -> dict:
     email = repo.get(message_id)
     prediction = repo.get_prediction(message_id)
     state = repo.get_state(message_id) or _EMPTY_STATE
+    label_ids = repo.labels_for(message_id) if email else []
     repo.close()
     if email is None:
         raise HTTPException(status_code=404, detail=f"no email with id {message_id}")
     preds = {message_id: prediction} if prediction else {}
     return {
-        **_summary(email, preds, {message_id: state}),
+        # "labels" here means the user's custom label ids (from _summary);
+        # the raw Gmail labels are exposed separately as "mail_labels".
+        **_summary(email, preds, {message_id: state}, {message_id: label_ids}),
         "to": email.to,
         "cc": email.cc,
-        "labels": email.labels,
+        "mail_labels": email.labels,
         "body": email.body,
     }
 
@@ -245,7 +257,7 @@ class AskRequest(BaseModel):
 @app.post("/api/ask")
 def ask(req: AskRequest) -> dict:
     """Retrieval only: the emails most relevant to a question. No LLM, private."""
-    emails, _, _ = _load()
+    emails, _, _, _ = _load()
     retriever = build_retriever("bm25")
     retriever.index(emails)
     hits = [h for h in retriever.search(req.question, k=req.k) if h.score > 0]
@@ -268,9 +280,108 @@ def ask(req: AskRequest) -> dict:
 @app.get("/api/scan")
 def scan() -> dict:
     """Emails that look like prompt-injection attempts (heuristic backstop)."""
-    emails, preds, states = _load()
-    flagged = [s for s in (_summary(e, preds, states) for e in emails) if s["flagged"]]
+    emails, preds, states, labels = _load()
+    flagged = [s for s in (_summary(e, preds, states, labels) for e in emails) if s["flagged"]]
     return {"flagged": flagged, "count": len(flagged)}
+
+
+# --- custom labels --------------------------------------------------------
+@app.get("/api/labels")
+def list_labels() -> dict:
+    """Custom labels with how many emails currently carry each."""
+    repo = open_repository(get_settings().db_path)
+    try:
+        counts = repo.label_counts()
+        labels = [{**lbl, "count": counts.get(lbl["id"], 0)} for lbl in repo.list_labels()]
+        return {"labels": labels}
+    finally:
+        repo.close()
+
+
+class LabelCreate(BaseModel):
+    name: str
+    color: str = "#2f6bea"
+    instructions: str = ""
+
+
+@app.post("/api/labels")
+def create_label(req: LabelCreate) -> dict:
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="label name is required")
+    repo = open_repository(get_settings().db_path)
+    try:
+        label_id = uuid.uuid4().hex[:12]
+        repo.create_label(label_id, name, req.color, req.instructions.strip())
+        return {"id": label_id, "name": name, "color": req.color, "instructions": req.instructions}
+    finally:
+        repo.close()
+
+
+class LabelUpdate(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    instructions: str | None = None
+
+
+@app.patch("/api/labels/{label_id}")
+def update_label(label_id: str, req: LabelUpdate) -> dict:
+    repo = open_repository(get_settings().db_path)
+    try:
+        repo.update_label(label_id, name=req.name, color=req.color, instructions=req.instructions)
+        return repo.get_label(label_id) or {}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        repo.close()
+
+
+@app.delete("/api/labels/{label_id}")
+def delete_label(label_id: str) -> dict:
+    repo = open_repository(get_settings().db_path)
+    try:
+        repo.delete_label(label_id)
+        return {"deleted": label_id}
+    finally:
+        repo.close()
+
+
+class LabelAssign(BaseModel):
+    label_id: str
+    on: bool = True
+
+
+@app.post("/api/emails/{message_id}/labels")
+def assign_label(message_id: str, req: LabelAssign) -> dict:
+    """Add or remove a label on one email (manual flagging)."""
+    repo = open_repository(get_settings().db_path)
+    try:
+        if repo.get(message_id) is None:
+            raise HTTPException(status_code=404, detail=f"no email with id {message_id}")
+        if repo.get_label(req.label_id) is None:
+            raise HTTPException(status_code=404, detail=f"no label with id {req.label_id}")
+        repo.set_email_label(message_id, req.label_id, req.on)
+        return {"id": message_id, "labels": repo.labels_for(message_id)}
+    finally:
+        repo.close()
+
+
+@app.post("/api/labels/apply")
+def apply_labels() -> dict:
+    """Auto-apply instruction-carrying labels across the inbox (local LLM only)."""
+    client = _chat_client()  # may 400 on a cloud LLM
+    if client is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Auto-labelling needs a local LLM (e.g. Ollama). Set LLM_BASE_URL in .env.",
+        )
+    from inbox_agent.labeling import auto_apply
+
+    repo = open_repository(get_settings().db_path)
+    try:
+        return auto_apply(repo, client, Summarizer(repo, client))
+    finally:
+        repo.close()
 
 
 # --- conversational chat over the inbox -----------------------------------
