@@ -10,6 +10,7 @@ columns but **preserves** any existing prediction.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sqlite3
 from datetime import UTC, datetime
@@ -104,7 +105,10 @@ def _ensure_state_columns(conn: sqlite3.Connection) -> None:
     have = {r["name"] for r in conn.execute("PRAGMA table_info(emails)").fetchall()}
     for name, decl in added.items():
         if name not in have:
-            conn.execute(f"ALTER TABLE emails ADD COLUMN {name} {decl}")
+            # Another connection may add it first (the API opens a repo per
+            # request, so first-load requests can race this migration).
+            with contextlib.suppress(sqlite3.OperationalError):
+                conn.execute(f"ALTER TABLE emails ADD COLUMN {name} {decl}")
     conn.commit()
 
 

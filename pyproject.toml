@@ -31,6 +31,10 @@ web = [
     "uvicorn[standard]>=0.29",
     "httpx>=0.27",
 ]
+# Desktop app: a native window around the local server (see inbox_agent.desktop).
+desktop = [
+    "pywebview>=5.0",
+]
 dev = [
     "pytest>=8.2",
     "ruff>=0.5",

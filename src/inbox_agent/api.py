@@ -614,3 +614,23 @@ def chat_history(chat_id: str) -> dict:
         return {"chat_id": chat_id, "messages": repo.chat_messages(chat_id)}
     finally:
         repo.close()
+
+
+# --- serve the built web UI (desktop / single-process mode) ---------------
+# When a static export exists (web/out, produced by `DESKTOP=1 npm run build`),
+# mount it at "/" so one uvicorn process serves both the UI and the API. This is
+# added LAST, so every "/api/..." route above still matches first. In dev the
+# export doesn't exist and the Next dev server serves the UI instead.
+def _mount_ui() -> None:
+    import os
+    from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    ui_dir = os.environ.get("INBOX_UI_DIR")
+    path = Path(ui_dir) if ui_dir else Path(__file__).resolve().parents[2] / "web" / "out"
+    if path.is_dir():
+        app.mount("/", StaticFiles(directory=str(path), html=True), name="ui")
+
+
+_mount_ui()

@@ -54,6 +54,7 @@ src/inbox_agent/
   labeling.py      Auto-apply user labels by their instructions (local LLM only).
   sanitize.py      nh3 allowlist sanitizer for rendering real email HTML safely.
   gmail_write.py   Gmail writes: send a reply, clear UNREAD (read/write scope).
+  desktop.py       Desktop launcher (pywebview): one window, one process.
   security.py      Injection attack suite + detect_injection backstop.
   api.py           FastAPI backend for the web UI. Read-only mail; /api/chat is
                    local-LLM-only (fail closed). See docs/CHAT_DESIGN.md.

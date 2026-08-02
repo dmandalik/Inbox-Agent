@@ -276,6 +276,19 @@ def serve(
     uvicorn.run("inbox_agent.api:app", host=host, port=port, reload=reload)
 
 
+@app.command(name="app")
+def launch_app() -> None:
+    """Open the desktop app: one window, one process (UI + API together).
+
+    Needs the built UI and the desktop extra:
+        uv sync --extra web --extra desktop
+        DESKTOP=1 npm --prefix web run build
+    """
+    from inbox_agent.desktop import main
+
+    main()
+
+
 @app.command()
 def scan(db: DbOption = None) -> None:
     """Flag stored emails that look like prompt-injection attempts."""

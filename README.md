@@ -234,6 +234,21 @@ Chat is **fail-closed to a local LLM**: `/api/chat` refuses a cloud endpoint, so
 a real inbox is never sent off the machine. The full design (and the
 millions-of-users cost model) is in [`docs/CHAT_DESIGN.md`](docs/CHAT_DESIGN.md).
 
+## Desktop app
+
+The whole thing runs as a single-window desktop app — no terminals, one process.
+FastAPI serves the API *and* the built UI on one origin, and a native window
+(`pywebview`) wraps it. Everything stays local (same Ollama privacy model).
+
+```bash
+uv sync --extra web --extra desktop --extra gmail
+DESKTOP=1 npm --prefix web run build   # one-time: builds web/out (static UI)
+uv run inbox-agent app                  # opens the window
+```
+
+In dev you can still run the two servers separately (below); the desktop build is
+just a static export (`web/out`) that `api.py` mounts at `/` when present.
+
 ## Web app
 
 A local web UI sits on top of the CLI: a **FastAPI backend** (`api.py`) and a
