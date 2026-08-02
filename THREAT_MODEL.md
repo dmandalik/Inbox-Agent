@@ -1,4 +1,4 @@
-# Threat model — Inbox AI Agent
+# Threat model — Postwise
 
 One page, honest. Scope is Milestone 1 plus the current phases (triage, ask my
 inbox, security). The agent is **read only**: it can read mail and classify or
