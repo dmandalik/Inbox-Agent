@@ -2,7 +2,7 @@
   "name": "inbox-agent-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Web UI for the Inbox Agent. Talks to the FastAPI backend.",
+  "description": "Web UI for Postwise. Talks to the FastAPI backend.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

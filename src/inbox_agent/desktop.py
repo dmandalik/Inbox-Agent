@@ -53,7 +53,7 @@ def main() -> None:
     if not _wait_until_up():
         raise SystemExit(f"The API did not come up at {_URL}. Is the UI built (web/out)?")
 
-    webview.create_window("Inbox Agent", _URL, width=1240, height=840, min_size=(900, 600))
+    webview.create_window("Postwise", _URL, width=1240, height=840, min_size=(900, 600))
     webview.start()
 
 

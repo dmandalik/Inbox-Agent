@@ -1,4 +1,4 @@
-// Typed client for the Inbox Agent API. Requests go to /api/* which Next
+// Typed client for the Postwise API. Requests go to /api/* which Next
 // proxies to the FastAPI backend (see next.config.mjs).
 
 export type EmailSummary = {

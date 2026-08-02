@@ -447,7 +447,7 @@ export default function Console() {
             </svg>
           </div>
           <div>
-            <div className="brand-name">Inbox Agent</div>
+            <div className="brand-name">Postwise</div>
             <div className="brand-sub">triage · chat · guard</div>
           </div>
         </div>

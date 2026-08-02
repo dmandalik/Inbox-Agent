@@ -41,7 +41,7 @@ from inbox_agent.store import open_repository
 from inbox_agent.summarize import Summarizer
 from inbox_agent.triage import CATEGORIES, StubClassifier
 
-app = FastAPI(title="Inbox Agent API", version=__version__)
+app = FastAPI(title="Postwise API", version=__version__)
 
 # The Next dev server runs on :3000; allow it to call this API in development.
 app.add_middleware(

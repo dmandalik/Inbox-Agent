@@ -272,7 +272,7 @@ def serve(
         import uvicorn
     except ImportError as exc:
         raise _fail("The web API needs extra deps. Install them: uv sync --extra web") from exc
-    typer.echo(f"Inbox Agent API on http://{host}:{port}  (docs at /docs)")
+    typer.echo(f"Postwise API on http://{host}:{port}  (docs at /docs)")
     uvicorn.run("inbox_agent.api:app", host=host, port=port, reload=reload)
 
 
