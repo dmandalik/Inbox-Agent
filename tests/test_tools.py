@@ -55,6 +55,35 @@ def test_open_question_is_a_question():
     assert parse_intent("what did Priya say about the plan").kind == "question"
 
 
+def test_parse_reply():
+    it = parse_intent("reply to Priya saying I'll review it Friday")
+    assert it.kind == "reply"
+    assert it.filter.sender == "priya"
+    assert it.value == "I'll review it Friday"
+
+
+def test_parse_label():
+    it = parse_intent("label all from Priya as Work")
+    assert it.kind == "label"
+    assert it.filter.sender == "priya"
+    assert it.value == "Work"
+
+
+def test_parse_mark_read():
+    it = parse_intent("mark all from Priya as read")
+    assert it.kind == "action"
+    assert it.action == "read"
+    assert it.filter.sender == "priya"
+
+
+def test_parse_mark_unread_by_category():
+    it = parse_intent("mark newsletters unread")
+    assert it.kind == "action"
+    assert it.action == "unread"
+    assert it.filter.category == "newsletter"
+    assert it.filter.unread is False  # the word "unread" is the action, not a filter
+
+
 def test_sender_trimmed_of_trailing_clause():
     it = parse_intent("how many emails from Priya about the invoice")
     assert it.filter.sender == "priya"

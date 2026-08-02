@@ -88,9 +88,10 @@ class Filter:
 class Intent:
     """What the user asked for, structurally."""
 
-    kind: str  # "count" | "action" | "question"
+    kind: str  # "count" | "action" | "label" | "reply" | "question"
     filter: Filter = field(default_factory=Filter)
-    action: str | None = None  # set when kind == "action"
+    action: str | None = None  # set when kind == "action" (star/unstar/archive/read/unread)
+    value: str | None = None  # label name (kind == "label") or reply text (kind == "reply")
 
 
 _COUNT_RE = re.compile(r"\b(how many|number of|count( of)?|how much)\b", re.I)
@@ -116,17 +117,48 @@ def _parse_filter(message: str) -> Filter:
         sender = m.group(1).strip(" ?.!\"'")
         sender = re.sub(r"^(the|my)\s+", "", sender)
         # Drop trailing noise like "from priya about the invoice".
-        sender = re.split(r"\b(about|regarding|re|that|who|which|with)\b", sender)[0].strip()
+        sender = re.split(r"\b(about|regarding|re|that|who|which|with|as)\b", sender)[0].strip()
         if sender:
             f.sender = sender
     return f
 
 
 def parse_intent(message: str) -> Intent:
-    """Classify a message into a structured intent. Unsure ⇒ ``question``."""
+    """Classify a message into a structured intent. Unsure ⇒ ``question``.
+
+    Most-specific patterns first (reply/label/mark) before the plain
+    star/archive verbs, so "mark ... as read" isn't mistaken for a star.
+    """
     low = message.lower().strip()
 
-    # Action: an action verb aimed at a group ("star all from X", "archive newsletters").
+    # Reply: "reply to Priya saying I'll review Friday", "respond to the vendor: ok"
+    m = re.match(r"^\s*(?:reply|respond)(?:\s+to)?\s+(.+)$", low)
+    if m:
+        parts = re.split(r"\b(?:saying|that|with)\b\s*|:\s*", m.group(1), maxsplit=1)
+        target = parts[0].strip(" ,")
+        body = message[len(message) - len(parts[1]) :].strip() if len(parts) > 1 else ""
+        filt = _parse_filter(f"from {target}")
+        if filt.sender:
+            return Intent("reply", filt, value=body)
+
+    # Label: "label all from Priya as Work", "tag newsletters as Reading"
+    m = re.match(r"^\s*(?:label|tag)\s+(.*?)\s+as\s+(.+)$", low)
+    if m:
+        filt = _parse_filter(m.group(1))
+        name = message[message.lower().rfind(" as ") + 4 :].strip()  # keep original case
+        if not filt.is_empty() and name:
+            return Intent("label", filt, value=name)
+
+    # Mark read / unread: "mark all from X as read", "mark newsletters unread"
+    if re.match(r"^\s*mark\b", low):
+        action = "unread" if "unread" in low else ("read" if "read" in low else None)
+        if action:
+            # strip the read/unread words so they aren't parsed as filters
+            filt = _parse_filter(re.sub(r"\b(un)?read\b", " ", low))
+            if not filt.is_empty():
+                return Intent("action", filt, action)
+
+    # Star / unstar / archive.
     for verb, action in _ACTIONS.items():
         if re.search(rf"^\s*(please\s+)?{verb}\b", low):
             filt = _parse_filter(low)

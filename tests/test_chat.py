@@ -159,3 +159,26 @@ def test_action_with_no_matches_reports_gracefully():
     reply = engine.answer("archive all newsletters")
     assert reply.kind == "action"
     assert "couldn't find" in reply.text
+
+
+def test_label_via_chat_creates_and_assigns():
+    repo = open_repository(":memory:")
+    repo.add_many([_email("m1", "t1", "a", "x")])  # from Priya
+    engine = ChatEngine(repo.all(), Summarizer(repo, None), None, repo=repo)
+    reply = engine.answer("label all from priya as Work")
+    assert reply.kind == "label"
+    assert "Labelled 1" in reply.text
+    labels = repo.list_labels()
+    assert labels[0]["name"] == "Work"
+    assert repo.labels_for("m1") == [labels[0]["id"]]
+
+
+def test_reply_via_chat_proposes_without_sending():
+    repo = open_repository(":memory:")
+    repo.add_many([_email("m1", "t1", "Plan", "the plan")])  # from Priya
+    engine = ChatEngine(repo.all(), Summarizer(repo, None), None, repo=repo)
+    reply = engine.answer("reply to priya saying sounds good")
+    assert reply.kind == "reply"
+    assert reply.proposal is not None
+    assert reply.proposal["id"] == "m1"
+    assert reply.proposal["body"] == "sounds good"

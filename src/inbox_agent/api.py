@@ -538,6 +538,7 @@ def chat(req: ChatRequest) -> dict:
             "reply": reply.text,
             "widened": reply.widened,
             "kind": reply.kind,
+            "proposal": reply.proposal,
             "citations": [_citation_dict(c) for c in reply.citations],
         }
     finally:

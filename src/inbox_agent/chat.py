@@ -76,10 +76,20 @@ class ChatReply:
     text: str
     citations: list[Citation] = field(default_factory=list)
     widened: bool = False  # True if we had to fall back to the full inbox
-    kind: str = "question"  # "question" | "count" | "action"
+    kind: str = "question"  # "question" | "count" | "action" | "label" | "reply"
+    # For kind == "reply": {id, to, subject, body} — a proposed reply the UI
+    # renders with a Send button (sending stays a confirmed, human action).
+    proposal: dict | None = None
 
 
-_ACTION_VERB = {"star": "Starred", "unstar": "Unstarred", "archive": "Archived"}
+_ACTION_VERB = {
+    "star": "Starred",
+    "unstar": "Unstarred",
+    "archive": "Archived",
+    "read": "Marked read",
+    "unread": "Marked unread",
+}
+_LABEL_COLORS = ["#2f6bea", "#7a5cf0", "#0e9c9c", "#1f8a6b", "#c23b4e", "#b0791a"]
 
 
 class ChatEngine:
@@ -215,7 +225,64 @@ class ChatEngine:
             return ChatReply(
                 f"{verb} {len(matches)} {desc}.", self._email_citations(matches), kind="action"
             )
+        if intent.kind == "label" and intent.value:
+            return self._apply_label(intent)
+        if intent.kind == "reply":
+            return self._propose_reply(intent)
         return None
+
+    def _apply_label(self, intent) -> ChatReply:
+        """Assign an existing label to matching emails, creating it if new."""
+        name = intent.value
+        existing = {lbl["name"].strip().lower(): lbl for lbl in self._repo.list_labels()}
+        match = existing.get(name.strip().lower())
+        if match is not None:
+            label_id = match["id"]
+        else:
+            import uuid
+
+            label_id = uuid.uuid4().hex[:12]
+            color = _LABEL_COLORS[len(existing) % len(_LABEL_COLORS)]
+            self._repo.create_label(label_id, name, color, "")
+        matches = select(self._repo, intent.filter)
+        for email in matches:
+            self._repo.set_email_label(email.message_id, label_id, True)
+        return ChatReply(
+            f"Labelled {len(matches)} {intent.filter.describe()} as {name}.",
+            self._email_citations(matches),
+            kind="label",
+        )
+
+    def _propose_reply(self, intent) -> ChatReply:
+        """Find the email to reply to and propose a draft — never auto-send."""
+        matches = select(self._repo, intent.filter)
+        if not matches:
+            return ChatReply(
+                f"I couldn't find an email from {intent.filter.sender} to reply to.",
+                [],
+                kind="reply",
+            )
+        email = matches[0]  # most recent match
+        body = intent.value or ""
+        if not body and self._client is not None:
+            from inbox_agent.drafting import draft_reply
+
+            try:
+                body = draft_reply(email, self._client)
+            except Exception:
+                body = ""
+        reply = ChatReply(
+            f"Here's a reply I can send to {email.from_name}. Review it and hit Send.",
+            self._email_citations([email]),
+            kind="reply",
+        )
+        reply.proposal = {
+            "id": email.message_id,
+            "to": email.from_addr,
+            "subject": email.subject,
+            "body": body,
+        }
+        return reply
 
     def answer(
         self, question: str, history: list[ChatTurn] | None = None, *, k: int = 5

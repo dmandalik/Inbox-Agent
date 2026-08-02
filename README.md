@@ -223,9 +223,12 @@ and is built to spend as few tokens as possible at scale:
   not raw emails; the full body loads only when you open one.
 - **Saved chats** — conversations persist (with a sidebar to reopen them) and
   keep a rolling summary so per-turn cost stays flat as a chat grows.
-- **Tools before the LLM** — "how many unread from Priya?" or "star all
-  newsletters" are answered by SQL and filters with *no model call at all*
-  (`tools.py`); only open questions reach the LLM.
+- **Tools before the LLM** — the chatbot is a real agent over the app. "how many
+  unread from Priya?", "star all newsletters", "label all from Instagram as
+  Social", "mark everything from TikTok as read", and "reply to Priya saying I'll
+  review it Friday" are parsed to structured actions and run with *no model call*
+  (`tools.py`); only open questions reach the LLM. Replies are **proposed with a
+  Send button** — the chatbot never sends on its own.
 
 Chat is **fail-closed to a local LLM**: `/api/chat` refuses a cloud endpoint, so
 a real inbox is never sent off the machine. The full design (and the
