@@ -44,9 +44,14 @@ def test_factory_rejects_unknown_source():
         build_email_source("imap")
 
 
-def test_gmail_refuses_any_non_readonly_scope():
-    with pytest.raises(GmailNotConfigured, match="read-only"):
-        GmailEmailSource(scope="https://www.googleapis.com/auth/gmail.modify")
+def test_gmail_refuses_destructive_full_scope():
+    from pathlib import Path
+
+    from inbox_agent.email_source import gmail_service
+
+    # Read/write is allowed now, but the full-mailbox (delete) scope never is.
+    with pytest.raises(GmailNotConfigured, match="destructive"):
+        gmail_service(Path("x"), Path("y"), ["https://mail.google.com/"])
 
 
 def test_gmail_is_inert_without_credentials(tmp_path):

@@ -845,12 +845,31 @@ function Reader({
   const [drafting, setDrafting] = useState(false);
   const [draftErr, setDraftErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
 
   useEffect(() => {
     setDraft(null);
     setDraftErr(null);
     setCopied(false);
+    setSending(false);
+    setSent(false);
   }, [email.id]);
+
+  const sendReply = async () => {
+    if (draft === null || sending || sent) return;
+    if (!window.confirm(`Send this reply to ${email.from_name} <${email.from_addr}>?`)) return;
+    setSending(true);
+    setDraftErr(null);
+    try {
+      await api.sendReply(email.id, draft);
+      setSent(true);
+    } catch (e) {
+      setDraftErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  };
 
   const runDraft = async () => {
     setDrafting(true);
@@ -1017,15 +1036,20 @@ function Reader({
         <div className="draft-box">
           <div className="draft-box-head">
             <span>Suggested reply</span>
-            <button
-              className="chat-mini"
-              onClick={() => {
-                navigator.clipboard?.writeText(draft);
-                setCopied(true);
-              }}
-            >
-              {copied ? "Copied" : "Copy"}
-            </button>
+            <span className="draft-actions">
+              <button
+                className="chat-mini"
+                onClick={() => {
+                  navigator.clipboard?.writeText(draft);
+                  setCopied(true);
+                }}
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+              <button className="send-btn" onClick={sendReply} disabled={sending || sent}>
+                {sent ? "Sent ✓" : sending ? "Sending…" : "Send"}
+              </button>
+            </span>
           </div>
           <textarea
             className="draft-text"

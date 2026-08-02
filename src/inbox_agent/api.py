@@ -19,6 +19,7 @@ Run it with ``inbox-agent serve`` (needs the web extra: ``uv sync --extra web``)
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 
 from fastapi import FastAPI, HTTPException
@@ -29,6 +30,7 @@ from inbox_agent import __version__
 from inbox_agent.chat import ChatEngine, ChatTurn
 from inbox_agent.config import ConfigError, get_settings
 from inbox_agent.email_source import GmailNotConfigured, build_email_source
+from inbox_agent.gmail_write import build_gmail_writer
 from inbox_agent.llm import build_llm_client
 from inbox_agent.models import Email
 from inbox_agent.rag import is_local_llm
@@ -215,6 +217,19 @@ class StatePatch(BaseModel):
     archived: bool | None = None
 
 
+def _sync_read_to_gmail(message_id: str) -> None:
+    """Best-effort: clear UNREAD in Gmail when an email is marked read locally.
+
+    Silently does nothing when it can't apply (no token, synthetic id, offline,
+    or read-only scope). Never triggers interactive OAuth from a web request.
+    """
+    settings = get_settings()
+    if not settings.gmail_token_path.exists():
+        return
+    with contextlib.suppress(Exception):
+        build_gmail_writer(settings).mark_read(message_id)
+
+
 @app.patch("/api/emails/{message_id}/state")
 def set_state(message_id: str, patch: StatePatch) -> dict:
     """Flag/unflag, mark read/unread, or archive a single email."""
@@ -226,7 +241,43 @@ def set_state(message_id: str, patch: StatePatch) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     finally:
         repo.close()
+    if patch.read:  # keep Gmail's read-state in sync
+        _sync_read_to_gmail(message_id)
     return {"id": message_id, **(state or _EMPTY_STATE)}
+
+
+class SendRequest(BaseModel):
+    body: str
+
+
+@app.post("/api/emails/{message_id}/send")
+def send_reply(message_id: str, req: SendRequest) -> dict:
+    """Send a reply to an email via Gmail. The UI confirms before calling this."""
+    if not req.body.strip():
+        raise HTTPException(status_code=400, detail="reply body is required")
+    settings = get_settings()
+    if not settings.gmail_token_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Gmail isn't authorized for sending yet. Re-authorize with the "
+                "write scopes: delete var/token.json and run an `ingest --source gmail`."
+            ),
+        )
+    repo = open_repository(settings.db_path)
+    try:
+        email = repo.get(message_id)
+    finally:
+        repo.close()
+    if email is None:
+        raise HTTPException(status_code=404, detail=f"no email with id {message_id}")
+    try:
+        sent_id = build_gmail_writer(settings).send_reply(email, req.body)
+    except GmailNotConfigured as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # network / API errors
+        raise HTTPException(status_code=502, detail=f"Send failed: {exc}") from exc
+    return {"sent": sent_id, "to": email.from_addr}
 
 
 class DraftRequest(BaseModel):

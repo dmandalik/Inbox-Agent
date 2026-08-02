@@ -11,7 +11,7 @@ eval — that runs keyless and offline. Later phases add RAG, agentic actions
 with injection defense, observability, and a depth arc; interfaces are kept
 clean so those slot in without rewrites.
 
-Current state: 174 tests green, `ruff` clean, full-history `gitleaks` clean.
+Current state: 182 tests green, `ruff` clean, full-history `gitleaks` clean.
 Triage stub scores accuracy 0.97 / macro-F1 0.97 on the 40-email golden set
 (see the caveat in `README.md` — the stub is a floor, not a real result).
 BM25 retrieval scores recall@5 1.00 / MRR 0.94 on 8 golden queries. Read-only
@@ -53,6 +53,7 @@ src/inbox_agent/
   drafting.py      Reply drafting (local LLM only; a draft, never sends).
   labeling.py      Auto-apply user labels by their instructions (local LLM only).
   sanitize.py      nh3 allowlist sanitizer for rendering real email HTML safely.
+  gmail_write.py   Gmail writes: send a reply, clear UNREAD (read/write scope).
   security.py      Injection attack suite + detect_injection backstop.
   api.py           FastAPI backend for the web UI. Read-only mail; /api/chat is
                    local-LLM-only (fail closed). See docs/CHAT_DESIGN.md.
@@ -150,9 +151,12 @@ mail never silently discards triage results.
   network-touching `fetch` takes an injectable `service_factory`, so a fake
   Gmail service exercises the list/get pagination loop with no OAuth and no
   network. The earlier version had none of this coverage and was deleted during
-  the simplify pass; this is the deliberate re-add, tested this time. The scope
-  guard (`gmail.readonly` only) makes send/delete/modify structurally
-  impossible.
+  the simplify pass; this is the deliberate re-add, tested this time.
+- **Gmail is now read/write** (`gmail.modify` + `gmail.send`) so the app can send
+  replies and sync read-state. Writes live only in `gmail_write.py` (send + clear
+  UNREAD); the destructive full-mailbox scope is refused in `gmail_service`, there
+  is no delete path, sending is user-confirmed in the UI, and read-state sync is
+  best-effort. Set `GMAIL_SCOPES` to just the readonly scope to lock it back down.
 
 ## Gotchas (learned the hard way — don't re-discover these)
 

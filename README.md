@@ -267,7 +267,13 @@ API endpoints: `/api/health`, `/api/categories`, `/api/emails` (with
 `POST /api/chat`, `/api/chats`, `/api/chats/{id}`,
 `POST /api/emails/{id}/draft`, `/api/scan`, `/api/labels` (+ `PATCH`/`DELETE`
 `/api/labels/{id}`), `POST /api/emails/{id}/labels`, `POST /api/labels/apply`,
-`POST /api/sync`.
+`POST /api/sync`, `POST /api/emails/{id}/send`.
+
+**Send replies.** The draft box has a **Send** button: it sends the reply in the
+original Gmail thread via `POST /api/emails/{id}/send`. Sending is **always
+user-confirmed** (a dialog before it fires) — an injected email can never trigger
+a send. Opening a message also **clears its UNREAD label in Gmail** (best-effort).
+This needs the read/write scopes below.
 
 **Live sync.** A Sync button (and a background poll every 2 minutes) pulls fresh
 mail from Gmail via `POST /api/sync`. This is still **read-only** — it only
@@ -308,9 +314,10 @@ LLM that reads it. The defense is **architectural, not a regex**:
   a valid category.
 - **Untrusted framing.** Email content is always delimited and marked as data,
   with an instruction to ignore commands inside it (triage and RAG).
-- **Least privilege.** The agent is read-only, so there is no tool an injection
-  can abuse; `ask --answer` fails closed on a cloud LLM; Gmail refuses any scope
-  but read-only.
+- **Least privilege.** The only write actions are send-a-reply and clear-UNREAD;
+  sending is user-confirmed, there is no forward/delete path, and the destructive
+  full-mailbox scope is refused. `ask --answer` and chat fail closed on a cloud
+  LLM. Rendered email HTML is sanitized (`nh3`) before display.
 
 Measured on a 6-email attack suite (`security.py`):
 
@@ -380,12 +387,15 @@ inbox is connected**, switch the default to a **local model (Ollama)** or a
 documented **no-training** provider — real email must never be sent to a free
 tier that trains on prompts.
 
-## Gmail (optional, read-only)
+## Gmail (optional, read/write)
 
-The default `EmailSource` is synthetic. A real Gmail path is implemented in
-`inbox_agent/email_source.py` (`GmailEmailSource`) and is **opt-in and
-read-only** — it refuses any scope other than `gmail.readonly`, so it can never
-send, delete, or modify mail.
+The default `EmailSource` is synthetic. The real Gmail path
+(`inbox_agent/email_source.py`) is **opt-in**. It requests read/write scopes
+(`gmail.modify` + `gmail.send`) so the app can send replies and sync read-state;
+writes live only in `gmail_write.py` (send + clear UNREAD). The **destructive
+full-mailbox scope is refused**, there is no delete path, and sending is
+user-confirmed. To keep it strictly read-only, set
+`GMAIL_SCOPES='["https://www.googleapis.com/auth/gmail.readonly"]'`.
 
 **One-time setup (you own the credentials — never paste them anywhere but
 git-ignored `var/`):**
@@ -403,8 +413,10 @@ git-ignored `var/`):**
    uv run inbox-agent triage --backend stub   # or llm, with a key
    ```
 
-The first `ingest` opens a browser once for read-only consent; the token caches
-to `var/token.json` (git-ignored) so later runs are non-interactive.
+The first `ingest` opens a browser once for consent; the token caches to
+`var/token.json` (git-ignored) so later runs are non-interactive. If you
+upgraded from an older read-only token, **delete `var/token.json` and run
+`ingest` again** to re-authorize with the send/modify scopes.
 
 Use a **throwaway Gmail account** to demo this. Note there are **no
 ground-truth labels** on a real inbox, so `triage` produces predictions but

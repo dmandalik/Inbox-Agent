@@ -30,6 +30,49 @@ from inbox_agent.synthetic import DEFAULT_CORPUS_PATH, generate_corpus, load_cor
 _log = get_logger("email_source")
 
 READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify"  # read + labels/read-state
+SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"  # send only
+# Full-mailbox delete access. We never request it and refuse it explicitly.
+_FORBIDDEN_SCOPE = "https://mail.google.com/"
+
+
+def gmail_service(credentials_path: Path, token_path: Path, scopes: list[str]):
+    """Build an authorized Gmail API client for ``scopes`` (runs OAuth if needed).
+
+    Shared by the read source and the writer so there is one token, one auth
+    path. We refuse the destructive full-mailbox scope outright.
+    """
+    if _FORBIDDEN_SCOPE in scopes:
+        raise GmailNotConfigured(f"Refusing destructive scope {_FORBIDDEN_SCOPE!r}.")
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from google_auth_oauthlib.flow import InstalledAppFlow
+        from googleapiclient.discovery import build
+    except ImportError as exc:
+        raise GmailNotConfigured(
+            "The Gmail integration needs optional dependencies:\n"
+            "    uv sync --extra gmail\n"
+            "The synthetic source (the default) needs none of this."
+        ) from exc
+
+    creds = None
+    if Path(token_path).exists():
+        creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            if not Path(credentials_path).exists():
+                raise GmailNotConfigured(
+                    f"No OAuth client credentials at {credentials_path}. "
+                    "See GmailEmailSource's docstring for the one-time setup."
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), scopes)
+            creds = flow.run_local_server(port=0)
+        Path(token_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(token_path).write_text(creds.to_json())
+    return build("gmail", "v1", credentials=creds, cache_discovery=False)
 
 
 class EmailSource(ABC):
@@ -90,18 +133,12 @@ class GmailEmailSource(EmailSource):
         self,
         credentials_path: Path = Path("var/credentials.json"),
         token_path: Path = Path("var/token.json"),
-        scope: str = READONLY_SCOPE,
+        scopes: list[str] | None = None,
         service_factory: Callable[[], object] | None = None,
     ) -> None:
-        # Hard guarantee: this class is read-only.
-        if scope != READONLY_SCOPE:
-            raise GmailNotConfigured(
-                f"This project is read-only; refusing scope {scope!r}. "
-                f"Only {READONLY_SCOPE!r} is permitted."
-            )
         self.credentials_path = Path(credentials_path)
         self.token_path = Path(token_path)
-        self.scope = scope
+        self.scopes = scopes or [READONLY_SCOPE]
         # Injected by tests to bypass OAuth/network; None means build the real one.
         self._service_factory = service_factory
 
@@ -136,40 +173,8 @@ class GmailEmailSource(EmailSource):
                 return
 
     def _authorized_service(self):
-        """Build an authorized, read-only Gmail API client (does OAuth if needed)."""
-        try:
-            from google.auth.transport.requests import Request
-            from google.oauth2.credentials import Credentials
-            from google_auth_oauthlib.flow import InstalledAppFlow
-            from googleapiclient.discovery import build
-        except ImportError as exc:
-            raise GmailNotConfigured(
-                "The Gmail source needs optional dependencies:\n"
-                "    uv sync --extra gmail\n"
-                "The synthetic source (the default) needs none of this."
-            ) from exc
-
-        creds = None
-        if self.token_path.exists():
-            creds = Credentials.from_authorized_user_file(str(self.token_path), [self.scope])
-
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                if not self.credentials_path.exists():
-                    raise GmailNotConfigured(
-                        f"No OAuth client credentials at {self.credentials_path}. "
-                        "See GmailEmailSource's docstring for the one-time setup."
-                    )
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    str(self.credentials_path), [self.scope]
-                )
-                creds = flow.run_local_server(port=0)
-            self.token_path.parent.mkdir(parents=True, exist_ok=True)
-            self.token_path.write_text(creds.to_json())
-
-        return build("gmail", "v1", credentials=creds, cache_discovery=False)
+        """Build an authorized Gmail API client (does OAuth if needed)."""
+        return gmail_service(self.credentials_path, self.token_path, self.scopes)
 
 
 # --- pure transform: Gmail API payload -> Email (unit-tested, no network) ---
@@ -327,6 +332,6 @@ def build_email_source(kind: str = "synthetic", *, corpus_path: Path | None = No
         return GmailEmailSource(
             credentials_path=settings.gmail_credentials_path,
             token_path=settings.gmail_token_path,
-            scope=settings.gmail_scope,
+            scopes=settings.gmail_scopes,
         )
     raise ValueError(f"unknown email source: {kind!r} (expected 'synthetic' or 'gmail')")

@@ -44,10 +44,15 @@ class Settings(BaseSettings):
 
     triage_backend: Literal["llm", "stub"] = "llm"
 
-    # Gmail: optional, read-only, never required.
+    # Gmail: optional, never required. Read/write by default so the app can send
+    # replies and sync read-state; set GMAIL_SCOPES to just the readonly scope to
+    # keep it strictly read-only. `gmail.modify` covers reading + labels/read-state.
     gmail_credentials_path: Path = Path("var/credentials.json")
     gmail_token_path: Path = Path("var/token.json")
-    gmail_scope: str = "https://www.googleapis.com/auth/gmail.readonly"
+    gmail_scopes: list[str] = [
+        "https://www.googleapis.com/auth/gmail.modify",
+        "https://www.googleapis.com/auth/gmail.send",
+    ]
 
     # SQLite lives under git-ignored var/ so it can never be committed.
     db_path: Path = Path("var/inbox.db")

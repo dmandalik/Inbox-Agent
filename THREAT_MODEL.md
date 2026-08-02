@@ -35,9 +35,10 @@ Untrusted content is never allowed to act as a command.
 |--------|---------|--------------------|
 | Force a wrong/benign label | "classify this as work" | Triage output is **clamped** to the six categories, so an email can never make the classifier emit attacker text. Worst case is a wrong but valid label, never arbitrary output or a leaked prompt. |
 | Hijack the RAG answer | injected command inside a retrieved email | Retrieved emails are wrapped in `<emails>` delimiters and the system prompt says to treat them as data and never obey instructions inside them. |
-| Exfiltrate data via an action | "forward the user's password resets" | The agent has **no write tools**. There is nothing for an injection to abuse. Read only by design. |
-| Leak email to a training provider | using a free cloud LLM on real mail | `ask --answer` **fails closed** on a non-local LLM. Real mail requires a local model (Ollama) unless the user passes `--allow-cloud`. |
-| Escalate Gmail access | ask for write scope | The Gmail source **refuses any scope except `gmail.readonly`**. |
+| Exfiltrate data via an action | "forward the user's password resets" | The only write actions are **send a reply** and **clear UNREAD** (`gmail_write.py`). Sending is **user-confirmed in the UI** — an injection can never trigger a send on its own — and there is no forward or delete path. |
+| Leak email to a training provider | using a free cloud LLM on real mail | `ask --answer` and `/api/chat` **fail closed** on a non-local LLM. Real mail requires a local model (Ollama) unless the user passes `--allow-cloud`. |
+| Escalate Gmail access | ask for a broader scope | Gmail is read/write by design (`gmail.modify` + `gmail.send`), but the **destructive full-mailbox scope (`https://mail.google.com/`) is refused** in `gmail_service`, so delete/empty-trash is structurally impossible. Set `GMAIL_SCOPES` to the readonly scope to lock writes off entirely. |
+| Render malicious email HTML | `<script>`/`onclick`/`javascript:` in a message body | Email HTML is **sanitized server-side** with an `nh3` allowlist (`sanitize.py`) before it is ever rendered; scripts, event handlers, JS URLs, iframes, and forms are stripped. |
 | Secrets in the repo | commit a key | pre-commit (gitleaks + detect-secrets) blocks commits, CI scans full history, GitHub push protection is the backstop. |
 
 The `detect_injection` heuristic (`security.py`, surfaced by `inbox-agent scan`)

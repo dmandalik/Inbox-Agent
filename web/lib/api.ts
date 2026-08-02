@@ -151,6 +151,8 @@ export const api = {
   },
   sync: (limit = 50): Promise<{ added: number; fetched: number; total: number }> =>
     send("/sync", "POST", { limit }),
+  sendReply: (id: string, body: string): Promise<{ sent: string; to: string }> =>
+    send(`/emails/${encodeURIComponent(id)}/send`, "POST", { body }),
   labels: () => get<{ labels: Label[] }>("/labels"),
   createLabel: (name: string, color: string, instructions: string): Promise<Label> =>
     send("/labels", "POST", { name, color, instructions }),
