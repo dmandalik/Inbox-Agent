@@ -188,6 +188,16 @@ export default function Console() {
 
   useEffect(() => loadLabels(), [loadLabels]);
 
+  // Apply the remembered theme; default is light (no saved preference).
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("theme");
+      if (saved) document.documentElement.setAttribute("data-theme", saved);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   // Load the open email, and mark it read once.
   useEffect(() => {
     if (!selectedId) {
@@ -1406,10 +1416,14 @@ function ThemeToggle() {
       aria-label="Toggle light or dark theme"
       onClick={() => {
         const root = document.documentElement;
-        const dark =
-          root.getAttribute("data-theme") === "dark" ||
-          (!root.getAttribute("data-theme") && matchMedia("(prefers-color-scheme: dark)").matches);
-        root.setAttribute("data-theme", dark ? "light" : "dark");
+        // Default is light (no attribute); dark is opt-in and remembered.
+        const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        try {
+          localStorage.setItem("theme", next);
+        } catch {
+          /* ignore */
+        }
       }}
     >
       <svg {...svgProps}>

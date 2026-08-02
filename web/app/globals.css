@@ -30,19 +30,9 @@
   --shadow: 0 1px 2px rgba(20, 40, 80, 0.05), 0 10px 30px rgba(20, 40, 80, 0.08);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0b1220; --surface: #111a2e; --surface-2: #17233c;
-    --ink: #e7eefb; --ink-2: #9fb2d4; --ink-3: #6a7fa3;
-    --hairline: #223148; --hairline-strong: #33466a;
-    --accent: #5b8dff; --accent-ink: #83abff; --accent-wash: rgba(91, 141, 255, 0.16); --teal: #43cabc;
-    --warn: #eab259; --warn-wash: #2a2412; --warn-line: #4c3b16;
-    --danger: #f2768a; --danger-wash: #2a1520; --good: #58c896;
-    --dot-work: #6f9bff; --dot-personal: #b48bec; --dot-newsletter: #43cabc;
-    --dot-receipt: #58c896; --dot-notification: #8ea0c0; --dot-spam: #f2768a;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 34px rgba(3, 10, 24, 0.55);
-  }
-}
+/* Light is the default (the base :root above). Dark is opt-in via the toggle
+   (:root[data-theme="dark"]) — we intentionally do NOT auto-switch on the OS
+   prefers-color-scheme so the app opens in light mode for everyone. */
 :root[data-theme="light"] {
   --paper: #eef3fb; --surface: #ffffff; --surface-2: #f1f6fd;
   --ink: #14213a; --ink-2: #4f5f7d; --ink-3: #93a2bd;
@@ -55,15 +45,15 @@
   --shadow: 0 1px 2px rgba(20, 40, 80, 0.05), 0 10px 30px rgba(20, 40, 80, 0.08);
 }
 :root[data-theme="dark"] {
-  --paper: #0b1220; --surface: #111a2e; --surface-2: #17233c;
-  --ink: #e7eefb; --ink-2: #9fb2d4; --ink-3: #6a7fa3;
-  --hairline: #223148; --hairline-strong: #33466a;
-  --accent: #5b8dff; --accent-ink: #83abff; --accent-wash: rgba(91, 141, 255, 0.16); --teal: #43cabc;
-  --warn: #eab259; --warn-wash: #2a2412; --warn-line: #4c3b16;
-  --danger: #f2768a; --danger-wash: #2a1520; --good: #58c896;
+  --paper: #050608; --surface: #0d0f14; --surface-2: #14171e;
+  --ink: #eaf0fb; --ink-2: #97a4ba; --ink-3: #5c6982;
+  --hairline: #1a1e27; --hairline-strong: #29303c;
+  --accent: #4f8cff; --accent-ink: #74a4ff; --accent-wash: rgba(79, 140, 255, 0.16); --teal: #43cabc;
+  --warn: #eab259; --warn-wash: #241d0e; --warn-line: #45360f;
+  --danger: #f2768a; --danger-wash: #26121a; --good: #58c896;
   --dot-work: #6f9bff; --dot-personal: #b48bec; --dot-newsletter: #43cabc;
   --dot-receipt: #58c896; --dot-notification: #8ea0c0; --dot-spam: #f2768a;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 34px rgba(3, 10, 24, 0.55);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 34px rgba(0, 0, 0, 0.6);
 }
 
 * { box-sizing: border-box; }
@@ -81,8 +71,9 @@ button { font-family: inherit; }
    so the popup never covers the reading pane (wide screens only — on narrow
    screens the popup goes full-width). */
 @media (min-width: 1024px) {
+  /* Compact chat reserves room so it doesn't cover the reader. When expanded it
+     just overlays the content (no extra shift), so nothing gets pushed off. */
   .app.chat-open { max-width: calc(100vw - 470px); margin-left: 24px; margin-right: auto; }
-  .app.chat-open.chat-expanded { max-width: calc(100vw - 830px); }
 }
 
 .topbar { display: flex; align-items: center; justify-content: space-between; }
@@ -132,7 +123,8 @@ button { font-family: inherit; }
 .toolbar-search { flex: 1; min-width: 120px; display: flex; align-items: center; gap: 7px; background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 6px 10px; }
 .toolbar-search input { border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; width: 100%; outline: none; }
 .toolbar-search svg { width: 14px; height: 14px; color: var(--ink-3); flex: none; }
-.toolbar select { font: inherit; font-size: 12.5px; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 6px 8px; cursor: pointer; }
+.toolbar select { appearance: none; -webkit-appearance: none; font: inherit; font-size: 12.5px; color: var(--ink-2); background-color: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: 8px; padding: 6px 28px 6px 11px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a94a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 9px center; }
+.toolbar select:hover { color: var(--ink); border-color: var(--ink-3); }
 .toggle { font: inherit; font-size: 12px; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--hairline-strong); border-radius: 999px; padding: 5px 11px; cursor: pointer; }
 .toggle:hover { color: var(--ink); }
 .toggle[aria-pressed="true"] { background: var(--accent-wash); border-color: var(--accent); color: var(--accent-ink); font-weight: 560; }
