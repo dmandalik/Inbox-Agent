@@ -14,12 +14,15 @@ import {
   type EmailDetail,
   type EmailSummary,
   type Label,
+  type ReplyProposal,
 } from "@/lib/api";
 
 type ChatMsg = {
   role: "user" | "assistant";
   text: string;
   citations?: ChatCitation[];
+  proposal?: ReplyProposal;
+  sent?: boolean;
   error?: boolean;
 };
 
@@ -308,8 +311,22 @@ export default function Console() {
       try {
         const r = await api.chat(msg, chatId);
         setChatId(r.chat_id);
-        setChatMsgs((m) => [...m, { role: "assistant", text: r.reply, citations: r.citations }]);
+        setChatMsgs((m) => [
+          ...m,
+          {
+            role: "assistant",
+            text: r.reply,
+            citations: r.citations,
+            proposal: r.proposal ?? undefined,
+          },
+        ]);
         loadChatList();
+        // A chat action may have changed inbox state (labels, read, star…).
+        if (r.kind !== "question") {
+          loadEmails();
+          refreshCats();
+          loadLabels();
+        }
       } catch (e) {
         const detail = e instanceof Error ? e.message : String(e);
         setChatMsgs((m) => [...m, { role: "assistant", text: detail, error: true }]);
@@ -317,8 +334,18 @@ export default function Console() {
         setChatBusy(false);
       }
     },
-    [chatId, chatBusy, loadChatList],
+    [chatId, chatBusy, loadChatList, loadEmails, refreshCats, loadLabels],
   );
+
+  const sendChatReply = useCallback(async (idx: number, proposal: ReplyProposal) => {
+    if (!window.confirm(`Send this reply to ${proposal.to}?`)) return;
+    try {
+      await api.sendReply(proposal.id, proposal.body);
+      setChatMsgs((m) => m.map((msg, i) => (i === idx ? { ...msg, sent: true } : msg)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
 
   const loadChat = useCallback(async (id: string) => {
     try {
@@ -629,6 +656,7 @@ export default function Console() {
         onReset={resetChat}
         onSelectChat={loadChat}
         onCitation={openCitation}
+        onSendReply={sendChatReply}
       />
     </div>
   );
@@ -650,6 +678,7 @@ function ChatWidget({
   onReset,
   onSelectChat,
   onCitation,
+  onSendReply,
 }: {
   open: boolean;
   expanded: boolean;
@@ -666,16 +695,27 @@ function ChatWidget({
   onReset: () => void;
   onSelectChat: (id: string) => void;
   onCitation: (id: string) => void;
+  onSendReply: (idx: number, proposal: ReplyProposal) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy, open, expanded]);
 
+  // Grow the composer with its content, up to a cap; then it scrolls internally.
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [input, open, expanded]);
+
   const suggestions = [
     "How many unread emails do I have?",
-    "Summarize anything about invoices or payments",
-    "Star all emails from the newsletter",
+    "Label all from Instagram as Social",
+    "Mark everything from TikTok as read",
+    "Reply to Priya saying I'll review it Friday",
   ];
 
   if (!open) {
@@ -770,6 +810,18 @@ function ChatWidget({
             )}
             <div className={`bubble ${m.role}${m.error ? " error" : ""}`}>
               <div className="bubble-text">{m.text}</div>
+              {m.proposal && m.proposal.body && (
+                <div className="proposal">
+                  <div className="proposal-body">{m.proposal.body}</div>
+                  <button
+                    className="send-btn"
+                    disabled={m.sent}
+                    onClick={() => onSendReply(i, m.proposal!)}
+                  >
+                    {m.sent ? "Sent ✓" : `Send to ${m.proposal.to}`}
+                  </button>
+                </div>
+              )}
               {m.citations && m.citations.length > 0 && (
                 <div className="cites">
                   {m.citations.map((c) => (
@@ -809,10 +861,19 @@ function ChatWidget({
               onSend();
             }}
           >
-            <input
+            <textarea
+              ref={taRef}
+              className="chat-textarea"
               value={input}
+              rows={1}
               onChange={(e) => onInput(e.target.value)}
-              placeholder="Message your inbox…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend();
+                }
+              }}
+              placeholder="Message your inbox…  (Shift+Enter for a new line)"
               aria-label="Message your inbox"
               autoFocus
             />

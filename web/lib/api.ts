@@ -62,11 +62,13 @@ export type ChatCitation = {
   date: string;
   summary: string;
 };
+export type ReplyProposal = { id: string; to: string; subject: string; body: string };
 export type ChatResponse = {
   chat_id: string;
   reply: string;
   widened: boolean;
   kind: string;
+  proposal: ReplyProposal | null;
   citations: ChatCitation[];
 };
 export type ChatListItem = { id: string; title: string; updated_at: string };
