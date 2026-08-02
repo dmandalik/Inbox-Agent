@@ -1,7 +1,8 @@
-# Inbox AI Agent
+# Postwise
 
-An AI agent that monitors an email inbox — it **triages** and flags messages,
-answers **questions** about your mail (RAG, later phase), and **drafts replies**,
+**Postwise** is an AI agent for your inbox — it **triages** and flags messages,
+**chats** about your mail and takes actions for you (label, mark read, star,
+archive), **drafts and sends replies**, and **guards** against prompt injection,
 with strict human-in-the-loop control over anything that changes state.
 
 This repository is a portfolio project built in phases. **Milestone 1 (this
