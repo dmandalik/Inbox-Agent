@@ -270,7 +270,13 @@ API endpoints: `/api/health`, `/api/categories`, `/api/emails` (with
 `POST /api/chat`, `/api/chats`, `/api/chats/{id}`,
 `POST /api/emails/{id}/draft`, `/api/scan`, `/api/labels` (+ `PATCH`/`DELETE`
 `/api/labels/{id}`), `POST /api/emails/{id}/labels`, `POST /api/labels/apply`,
-`POST /api/sync`, `POST /api/emails/{id}/send`.
+`POST /api/sync`, `POST /api/emails/{id}/send`, `POST /api/send`,
+`POST /api/compose/draft`.
+
+**Compose new email.** A **Compose** button opens a modal to write a brand-new
+email (to / subject / body) and send it via `POST /api/send`, with a **Draft
+with AI** helper (`POST /api/compose/draft`) that fills the body from a one-line
+instruction. Sending is confirm-gated, same as replies.
 
 **Send replies.** The draft box has a **Send** button: it sends the reply in the
 original Gmail thread via `POST /api/emails/{id}/send`. Sending is **always

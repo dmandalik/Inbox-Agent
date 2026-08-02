@@ -84,6 +84,19 @@ def test_mark_read_removes_unread_label():
     assert svc.calls[0] == ("modify", "m1", {"removeLabelIds": ["UNREAD"]})
 
 
+def test_send_new_builds_a_standalone_message():
+    svc = FakeService()
+    sid = _writer(svc).send_new("bob@example.com", "Lunch?", "Are you free Friday?")
+    assert sid == "sent1"
+    kind, body = svc.calls[0]
+    assert kind == "send"
+    assert "threadId" not in body  # brand-new, not a reply
+    raw = base64.urlsafe_b64decode(body["raw"]).decode()
+    assert "To: bob@example.com" in raw
+    assert "Subject: Lunch?" in raw
+    assert "Are you free Friday?" in raw
+
+
 # --- API ----------------------------------------------------------------
 fastapi = pytest.importorskip("fastapi")
 
@@ -105,6 +118,10 @@ class FakeWriter:
 
     def mark_read(self, message_id):
         self.marked.append(message_id)
+
+    def send_new(self, to, subject, body):
+        self.sent = ("new", to, subject, body)
+        return "new1"
 
 
 @pytest.fixture
@@ -151,6 +168,44 @@ def test_marking_read_syncs_to_gmail(ctx):
     mid = client.get("/api/emails").json()["emails"][0]["id"]
     client.patch(f"/api/emails/{mid}/state", json={"read": True})
     assert fake.marked == [mid]
+
+
+def test_compose_send_endpoint(ctx):
+    client, fake = ctx
+    r = client.post("/api/send", json={"to": "bob@example.com", "subject": "Hi", "body": "yo"})
+    assert r.status_code == 200
+    assert r.json()["sent"] == "new1"
+    assert fake.sent == ("new", "bob@example.com", "Hi", "yo")
+
+
+def test_compose_send_requires_recipient_and_body(ctx):
+    client, _ = ctx
+    assert client.post("/api/send", json={"to": "", "body": "hi"}).status_code == 400
+    assert client.post("/api/send", json={"to": "b@x.com", "body": " "}).status_code == 400
+
+
+def test_compose_draft_endpoint(tmp_path, monkeypatch):
+    from inbox_agent.llm import LLMClient
+
+    class FakeLLM(LLMClient):
+        model = "fake"
+
+        def complete(self, *, system, user, max_tokens=512):
+            return "Hi Bob,\n\nAre you free Friday?\n\nThanks,"
+
+    db = tmp_path / "api.db"
+    repo = open_repository(str(db))
+    repo.add_many(generate_corpus())
+    repo.close()
+    monkeypatch.setenv("DB_PATH", str(db))
+    get_settings.cache_clear()
+    from inbox_agent import api
+
+    monkeypatch.setattr(api, "_chat_client", lambda: FakeLLM())
+    r = TestClient(api.app).post("/api/compose/draft", json={"instruction": "ask Bob to lunch"})
+    get_settings.cache_clear()
+    assert r.status_code == 200
+    assert "Friday" in r.json()["draft"]
 
 
 def test_send_without_token_is_400(tmp_path, monkeypatch):

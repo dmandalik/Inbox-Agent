@@ -44,3 +44,14 @@ def draft_reply(email: Email, client: LLMClient, guidance: str | None = None) ->
     return client.complete(
         system=DRAFT_SYSTEM_PROMPT, user=_render(email, guidance), max_tokens=400
     ).strip()
+
+
+COMPOSE_SYSTEM_PROMPT = """You write a new email body for the user from a short
+instruction. Output ONLY the email body — a greeting, the message, and a simple
+closing like "Thanks,". No subject line, no "[Your Name]" placeholders, no
+preamble like "Here is the email"."""
+
+
+def draft_new(instruction: str, client: LLMClient) -> str:
+    """Draft a brand-new email body from a plain-language instruction."""
+    return client.complete(system=COMPOSE_SYSTEM_PROMPT, user=instruction, max_tokens=400).strip()

@@ -383,3 +383,21 @@ button { font-family: inherit; }
 .proposal { margin-top: 10px; border: 1px solid var(--hairline); border-radius: 10px; background: var(--surface); overflow: hidden; }
 .proposal-body { padding: 10px 12px; font-size: 13px; color: var(--ink); white-space: pre-wrap; line-height: 1.55; border-bottom: 1px solid var(--hairline); }
 .proposal .send-btn { margin: 8px 12px; }
+
+/* --- compose new email ------------------------------------------------- */
+.compose-launch { display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 13px; font-weight: 580; color: #fff; background: var(--accent); border: 0; border-radius: 999px; padding: 8px 15px; cursor: pointer; }
+.compose-launch:hover { filter: brightness(1.05); }
+.compose-launch svg { width: 15px; height: 15px; }
+
+.modal-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(6, 12, 24, 0.5); backdrop-filter: blur(2px); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal { width: min(620px, 100%); max-height: 90vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--hairline-strong); border-radius: var(--r); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); overflow: hidden; }
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--hairline); }
+.compose-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+.compose-field { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 9px; padding: 10px 13px; outline: none; }
+.compose-field:focus { border-color: var(--accent); }
+.compose-text { font: inherit; font-size: 14px; line-height: 1.55; color: var(--ink); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 9px; padding: 11px 13px; outline: none; resize: vertical; min-height: 140px; }
+.compose-text:focus { border-color: var(--accent); }
+.compose-ai { display: flex; align-items: center; gap: 8px; border-top: 1px dashed var(--hairline-strong); padding-top: 10px; }
+.compose-ai .compose-field { flex: 1; }
+.compose-ai .chat-title-spark { color: var(--accent); }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--hairline); background: var(--surface-2); }

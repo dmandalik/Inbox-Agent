@@ -64,6 +64,15 @@ class GmailWriter:
         sent = self._service().users().messages().send(userId="me", body=payload).execute()
         return sent.get("id", "")
 
+    def send_new(self, to: str, subject: str, body: str) -> str:
+        """Send a brand-new email (not a reply to anything)."""
+        msg = MIMEText(body)
+        msg["To"] = to
+        msg["Subject"] = subject
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
+        sent = self._service().users().messages().send(userId="me", body={"raw": raw}).execute()
+        return sent.get("id", "")
+
     def mark_read(self, message_id: str) -> None:
         """Clear the UNREAD label on a message (idempotent)."""
         self._service().users().messages().modify(

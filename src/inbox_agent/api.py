@@ -305,6 +305,55 @@ def draft(message_id: str, req: DraftRequest) -> dict:
     return {"id": message_id, "draft": draft_reply(email, client, req.guidance)}
 
 
+class ComposeSend(BaseModel):
+    to: str
+    subject: str = ""
+    body: str
+
+
+@app.post("/api/send")
+def send_new(req: ComposeSend) -> dict:
+    """Compose and send a brand-new email via Gmail. The UI confirms first."""
+    if not req.to.strip() or not req.body.strip():
+        raise HTTPException(status_code=400, detail="a recipient and a body are required")
+    settings = get_settings()
+    if not settings.gmail_token_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Gmail isn't authorized for sending yet. Re-authorize with the "
+                "write scopes: delete var/token.json and run an `ingest --source gmail`."
+            ),
+        )
+    try:
+        sent_id = build_gmail_writer(settings).send_new(req.to, req.subject, req.body)
+    except GmailNotConfigured as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Send failed: {exc}") from exc
+    return {"sent": sent_id, "to": req.to}
+
+
+class ComposeDraft(BaseModel):
+    instruction: str
+
+
+@app.post("/api/compose/draft")
+def compose_draft(req: ComposeDraft) -> dict:
+    """Draft a new email body from a plain-language instruction (local LLM only)."""
+    if not req.instruction.strip():
+        raise HTTPException(status_code=400, detail="an instruction is required")
+    client = _chat_client()  # may 400 on a cloud LLM
+    if client is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Drafting needs a local LLM (e.g. Ollama). Set LLM_BASE_URL in .env.",
+        )
+    from inbox_agent.drafting import draft_new
+
+    return {"draft": draft_new(req.instruction, client)}
+
+
 class AskRequest(BaseModel):
     question: str
     k: int = 5

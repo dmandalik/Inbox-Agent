@@ -155,6 +155,10 @@ export const api = {
     send("/sync", "POST", { limit }),
   sendReply: (id: string, body: string): Promise<{ sent: string; to: string }> =>
     send(`/emails/${encodeURIComponent(id)}/send`, "POST", { body }),
+  sendNew: (to: string, subject: string, body: string): Promise<{ sent: string; to: string }> =>
+    send("/send", "POST", { to, subject, body }),
+  composeDraft: (instruction: string): Promise<{ draft: string }> =>
+    send("/compose/draft", "POST", { instruction }),
   labels: () => get<{ labels: Label[] }>("/labels"),
   createLabel: (name: string, color: string, instructions: string): Promise<Label> =>
     send("/labels", "POST", { name, color, instructions }),

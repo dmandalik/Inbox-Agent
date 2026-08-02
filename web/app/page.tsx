@@ -91,6 +91,12 @@ const Close = () => (
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 );
+const Compose = () => (
+  <svg {...svgProps}>
+    <path d="M4 20h4L18 10l-4-4L4 16z" />
+    <path d="M14 6l4 4" />
+  </svg>
+);
 const Refresh = ({ spinning }: { spinning?: boolean }) => (
   <svg {...svgProps} className={spinning ? "spin" : undefined}>
     <polyline points="23 4 23 10 17 10" />
@@ -142,6 +148,7 @@ export default function Console() {
 
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = useState(false);
 
   const refreshCats = useCallback(() => {
     api.categories().then(setCats).catch((e) => setError(String(e)));
@@ -440,6 +447,15 @@ export default function Console() {
             {syncMsg ?? (cats ? `${cats.total} emails · ${cats.flagged} flagged` : "connecting…")}
           </span>
           <button
+            className="compose-launch"
+            onClick={() => setComposeOpen(true)}
+            title="Compose a new email"
+            aria-label="Compose a new email"
+          >
+            <Compose />
+            Compose
+          </button>
+          <button
             className="icon-btn"
             onClick={() => doSync(false)}
             disabled={syncing}
@@ -658,6 +674,8 @@ export default function Console() {
         onCitation={openCitation}
         onSendReply={sendChatReply}
       />
+
+      <ComposeModal open={composeOpen} onClose={() => setComposeOpen(false)} />
     </div>
   );
 }
@@ -1246,6 +1264,137 @@ function LabelRail({
         </button>
       )}
     </>
+  );
+}
+
+function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState("");
+  const [body, setBody] = useState("");
+  const [instruction, setInstruction] = useState("");
+  const [drafting, setDrafting] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTo("");
+      setSubject("");
+      setBody("");
+      setInstruction("");
+      setSent(false);
+      setErr(null);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const draftIt = async () => {
+    if (!instruction.trim() || drafting) return;
+    setDrafting(true);
+    setErr(null);
+    try {
+      const r = await api.composeDraft(instruction);
+      setBody(r.draft);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDrafting(false);
+    }
+  };
+
+  const sendIt = async () => {
+    if (!to.trim() || !body.trim() || sending || sent) return;
+    if (!window.confirm(`Send this email to ${to}?`)) return;
+    setSending(true);
+    setErr(null);
+    try {
+      await api.sendNew(to, subject, body);
+      setSent(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-head">
+          <span className="pane-title">
+            <span className="chat-title-spark">
+              <Compose />
+            </span>
+            New message
+          </span>
+          <button className="chat-icon" onClick={onClose} aria-label="Close">
+            <Close />
+          </button>
+        </div>
+
+        <div className="compose-body">
+          <input
+            className="compose-field"
+            placeholder="To"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            aria-label="To"
+          />
+          <input
+            className="compose-field"
+            placeholder="Subject"
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            aria-label="Subject"
+          />
+          <textarea
+            className="compose-text"
+            placeholder="Write your message…"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows={8}
+            aria-label="Message body"
+          />
+          <div className="compose-ai">
+            <span className="chat-title-spark">
+              <Sparkle />
+            </span>
+            <input
+              className="compose-field"
+              placeholder="…or describe it and let AI draft — e.g. ask Bob to lunch Friday"
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  draftIt();
+                }
+              }}
+              aria-label="Describe the email for AI"
+            />
+            <button className="chat-mini" onClick={draftIt} disabled={drafting}>
+              {drafting ? "Drafting…" : "Draft"}
+            </button>
+          </div>
+          {err && <div className="draft-err">{err}</div>}
+        </div>
+
+        <div className="modal-foot">
+          <button className="chat-mini" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="send-btn"
+            onClick={sendIt}
+            disabled={sending || sent || !to.trim() || !body.trim()}
+          >
+            {sent ? "Sent ✓" : sending ? "Sending…" : "Send"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
