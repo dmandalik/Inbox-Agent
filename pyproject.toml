@@ -1,7 +1,7 @@
 [project]
-name = "inbox-agent"
+name = "postwise"
 version = "0.1.0"
-description = "An AI agent that monitors an email inbox: triage, RAG Q&A, and draft replies with human-in-the-loop control. Milestone 1: synthetic-data triage + eval."
+description = "Postwise — an AI agent for your inbox: triage, chat with actions, draft and send replies, and injection defense, with human-in-the-loop control."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -43,7 +43,8 @@ dev = [
 ]
 
 [project.scripts]
-inbox-agent = "inbox_agent.cli:app"
+postwise = "inbox_agent.cli:app"
+inbox-agent = "inbox_agent.cli:app"  # legacy alias; both names work
 
 [build-system]
 requires = ["hatchling"]

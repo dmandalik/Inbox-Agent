@@ -64,7 +64,7 @@ def _guard_cloud_llm(settings, allow_cloud: bool) -> None:
 @app.command()
 def version() -> None:
     """Print the installed version."""
-    typer.echo(f"inbox-agent {__version__}")
+    typer.echo(f"postwise {__version__}")
 
 
 @app.command("generate-data")
