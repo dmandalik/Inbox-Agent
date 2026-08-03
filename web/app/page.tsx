@@ -149,6 +149,27 @@ export default function Console() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [fontScheme, setFontScheme] = useState("book");
+  const [logo, setLogo] = useState("monogram");
+
+  const pickFont = useCallback((id: string) => {
+    setFontScheme(id);
+    document.documentElement.setAttribute("data-font", id);
+    try {
+      localStorage.setItem("font", id);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const pickLogo = useCallback((id: string) => {
+    setLogo(id);
+    try {
+      localStorage.setItem("logo", id);
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const refreshCats = useCallback(() => {
     api.categories().then(setCats).catch((e) => setError(String(e)));
@@ -188,11 +209,18 @@ export default function Console() {
 
   useEffect(() => loadLabels(), [loadLabels]);
 
-  // Apply the remembered theme; default is light (no saved preference).
+  // Apply remembered appearance (theme / font / logo). Defaults: light, book, monogram.
   useEffect(() => {
     try {
-      const saved = localStorage.getItem("theme");
-      if (saved) document.documentElement.setAttribute("data-theme", saved);
+      const theme = localStorage.getItem("theme");
+      if (theme) document.documentElement.setAttribute("data-theme", theme);
+      const font = localStorage.getItem("font");
+      if (font) {
+        setFontScheme(font);
+        document.documentElement.setAttribute("data-font", font);
+      }
+      const savedLogo = localStorage.getItem("logo");
+      if (savedLogo) setLogo(savedLogo);
     } catch {
       /* ignore */
     }
@@ -441,15 +469,9 @@ export default function Console() {
       <header className="topbar">
         <div className="brand">
           <div className="mark" aria-hidden>
-            <svg {...svgProps}>
-              <path d="M3 7l9 6 9-6" />
-              <rect x="3" y="5" width="18" height="14" rx="2" />
-            </svg>
+            <LogoGlyph kind={logo} />
           </div>
-          <div>
-            <div className="brand-name">Postwise</div>
-            <div className="brand-sub">triage · chat · guard</div>
-          </div>
+          <div className="brand-name">Postwise</div>
         </div>
         <div className="top-right">
           <span className="env">
@@ -474,6 +496,7 @@ export default function Console() {
           >
             <Refresh spinning={syncing} />
           </button>
+          <AppearanceMenu fontScheme={fontScheme} logo={logo} onFont={pickFont} onLogo={pickLogo} />
           <ThemeToggle />
         </div>
       </header>
@@ -605,7 +628,6 @@ export default function Console() {
                     )}
                   </span>
                   <span className="msg-subj">{m.subject}</span>
-                  <span className="msg-snip">{m.snippet}</span>
                   {m.labels.length > 0 && (
                     <span className="row-labels">
                       {m.labels.map(
@@ -1404,6 +1426,105 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+const FONT_SCHEMES = [
+  { id: "book", label: "Book" },
+  { id: "classic", label: "Classic" },
+  { id: "elegant", label: "Elegant" },
+  { id: "sans", label: "Warm Sans" },
+];
+
+const LOGO_KEYS = ["monogram", "spark", "plane", "orbit"];
+
+function LogoGlyph({ kind }: { kind: string }) {
+  if (kind === "spark")
+    return (
+      <svg {...svgProps} fill="currentColor" stroke="none">
+        <path d="M12 2.5l1.9 5.6 5.6 1.9-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.9z" />
+      </svg>
+    );
+  if (kind === "plane")
+    return (
+      <svg {...svgProps}>
+        <path d="M22 2 11 13" />
+        <path d="M22 2 15 22l-4-9-9-4 20-7z" />
+      </svg>
+    );
+  if (kind === "orbit")
+    return (
+      <svg {...svgProps}>
+        <ellipse cx="12" cy="12" rx="9" ry="3.6" transform="rotate(-22 12 12)" />
+        <circle cx="12" cy="12" r="2.7" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  // "monogram": a P set in the current font — unique and follows the type scheme.
+  return (
+    <svg viewBox="0 0 24 24">
+      <text x="12" y="17.5" textAnchor="middle" fontSize="17" fontWeight="700" fill="currentColor">
+        P
+      </text>
+    </svg>
+  );
+}
+
+function AppearanceMenu({
+  fontScheme,
+  logo,
+  onFont,
+  onLogo,
+}: {
+  fontScheme: string;
+  logo: string;
+  onFont: (id: string) => void;
+  onLogo: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="appearance">
+      <button
+        className="icon-btn"
+        onClick={() => setOpen((v) => !v)}
+        title="Appearance"
+        aria-label="Appearance"
+      >
+        <span className="aa">Aa</span>
+      </button>
+      {open && (
+        <>
+          <div className="appear-scrim" onClick={() => setOpen(false)} />
+          <div className="appear-menu">
+            <div className="appear-label">Font</div>
+            <div className="appear-fonts">
+              {FONT_SCHEMES.map((f) => (
+                <button
+                  key={f.id}
+                  className={`appear-opt${fontScheme === f.id ? " on" : ""}`}
+                  style={{ fontFamily: `var(--font-${f.id})` }}
+                  onClick={() => onFont(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="appear-label">Logo</div>
+            <div className="appear-logos">
+              {LOGO_KEYS.map((k) => (
+                <button
+                  key={k}
+                  className={`appear-logo${logo === k ? " on" : ""}`}
+                  onClick={() => onLogo(k)}
+                  aria-label={k}
+                >
+                  <LogoGlyph kind={k} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

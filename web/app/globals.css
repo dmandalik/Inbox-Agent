@@ -23,8 +23,14 @@
   --dot-receipt: #1f8a6b;
   --dot-notification: #7f8aa3;
   --dot-spam: #c23b4e;
-  --font-ui: "Palatino Linotype", "Book Antiqua", Palatino, "Iowan Old Style", "Hoefler Text", Georgia, "Times New Roman", serif;
-  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  /* Warm, uniform type. One family everywhere (no codey monospace); numbers use
+     tabular figures where alignment matters. Pick a scheme via data-font. */
+  --font-book: "Palatino Linotype", "Iowan Old Style", Palatino, Georgia, serif;
+  --font-classic: Georgia, Cambria, "Times New Roman", serif;
+  --font-elegant: Baskerville, "Hoefler Text", "Big Caslon", Georgia, serif;
+  --font-sans: "Avenir Next", Avenir, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-ui: var(--font-book);
+  --font-mono: var(--font-ui);
   --r: 14px;
   --r-sm: 10px;
   --shadow: 0 1px 2px rgba(20, 40, 80, 0.05), 0 10px 30px rgba(20, 40, 80, 0.08);
@@ -55,6 +61,11 @@
   --dot-receipt: #58c896; --dot-notification: #8ea0c0; --dot-spam: #f2768a;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 34px rgba(0, 0, 0, 0.6);
 }
+
+:root[data-font="book"] { --font-ui: var(--font-book); }
+:root[data-font="classic"] { --font-ui: var(--font-classic); }
+:root[data-font="elegant"] { --font-ui: var(--font-elegant); }
+:root[data-font="sans"] { --font-ui: var(--font-sans); }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -393,3 +404,19 @@ button { font-family: inherit; }
 .compose-ai .compose-field { flex: 1; }
 .compose-ai .chat-title-spark { color: var(--accent); }
 .modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--hairline); background: var(--surface-2); }
+
+/* --- appearance menu (font scheme + logo) ------------------------------ */
+.appearance { position: relative; }
+.aa { font-weight: 700; font-size: 13px; letter-spacing: -0.02em; }
+.appear-scrim { position: fixed; inset: 0; z-index: 40; }
+.appear-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 50; width: 250px; background: var(--surface); border: 1px solid var(--hairline-strong); border-radius: var(--r); box-shadow: var(--shadow); padding: 12px; }
+.appear-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-3); margin: 2px 2px 8px; }
+.appear-fonts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 14px; }
+.appear-opt { font-size: 14px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 9px; padding: 10px; cursor: pointer; text-align: center; }
+.appear-opt:hover { border-color: var(--accent); }
+.appear-opt.on { border-color: var(--accent); background: var(--accent-wash); color: var(--accent); }
+.appear-logos { display: flex; gap: 8px; }
+.appear-logo { width: 46px; height: 46px; display: grid; place-items: center; border: 1px solid var(--hairline); border-radius: 11px; background: var(--surface-2); cursor: pointer; color: var(--ink-2); }
+.appear-logo svg { width: 20px; height: 20px; }
+.appear-logo:hover { border-color: var(--accent); color: var(--accent); }
+.appear-logo.on { border-color: var(--accent); background: var(--accent-wash); color: var(--accent); }

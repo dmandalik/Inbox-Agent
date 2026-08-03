@@ -576,64 +576,6 @@ wheels = [
 ]
 
 [[package]]
-name = "inbox-agent"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "nh3" },
-    { name = "openai" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-    { name = "python-dotenv" },
-    { name = "rank-bm25" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-desktop = [
-    { name = "pywebview" },
-]
-dev = [
-    { name = "detect-secrets" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "ruff" },
-]
-gmail = [
-    { name = "google-api-python-client" },
-    { name = "google-auth-httplib2" },
-    { name = "google-auth-oauthlib" },
-]
-web = [
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "detect-secrets", marker = "extra == 'dev'", specifier = ">=1.5" },
-    { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.110" },
-    { name = "google-api-python-client", marker = "extra == 'gmail'", specifier = ">=2.130" },
-    { name = "google-auth-httplib2", marker = "extra == 'gmail'", specifier = ">=0.2" },
-    { name = "google-auth-oauthlib", marker = "extra == 'gmail'", specifier = ">=1.2" },
-    { name = "httpx", marker = "extra == 'web'", specifier = ">=0.27" },
-    { name = "nh3", specifier = ">=0.2.17" },
-    { name = "openai", specifier = ">=1.40" },
-    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7" },
-    { name = "pydantic", specifier = ">=2.7" },
-    { name = "pydantic-settings", specifier = ">=2.3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" },
-    { name = "python-dotenv", specifier = ">=1.0" },
-    { name = "pywebview", marker = "extra == 'desktop'", specifier = ">=5.0" },
-    { name = "rank-bm25", specifier = ">=0.2.2" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
-    { name = "typer", specifier = ">=0.12" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = ">=0.29" },
-]
-provides-extras = ["gmail", "web", "desktop", "dev"]
-
-[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -983,6 +925,64 @@ sdist = { url = "https://files.pythonhosted.org/packages/f9/e2/3e91f31a7d2b083fe
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl", hash = "sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746", size = 20538, upload-time = "2025-05-15T12:30:06.134Z" },
 ]
+
+[[package]]
+name = "postwise"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "nh3" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "rank-bm25" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+desktop = [
+    { name = "pywebview" },
+]
+dev = [
+    { name = "detect-secrets" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+gmail = [
+    { name = "google-api-python-client" },
+    { name = "google-auth-httplib2" },
+    { name = "google-auth-oauthlib" },
+]
+web = [
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "detect-secrets", marker = "extra == 'dev'", specifier = ">=1.5" },
+    { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.110" },
+    { name = "google-api-python-client", marker = "extra == 'gmail'", specifier = ">=2.130" },
+    { name = "google-auth-httplib2", marker = "extra == 'gmail'", specifier = ">=0.2" },
+    { name = "google-auth-oauthlib", marker = "extra == 'gmail'", specifier = ">=1.2" },
+    { name = "httpx", marker = "extra == 'web'", specifier = ">=0.27" },
+    { name = "nh3", specifier = ">=0.2.17" },
+    { name = "openai", specifier = ">=1.40" },
+    { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.7" },
+    { name = "pydantic", specifier = ">=2.7" },
+    { name = "pydantic-settings", specifier = ">=2.3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2" },
+    { name = "python-dotenv", specifier = ">=1.0" },
+    { name = "pywebview", marker = "extra == 'desktop'", specifier = ">=5.0" },
+    { name = "rank-bm25", specifier = ">=0.2.2" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
+    { name = "typer", specifier = ">=0.12" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'web'", specifier = ">=0.29" },
+]
+provides-extras = ["gmail", "web", "desktop", "dev"]
 
 [[package]]
 name = "pre-commit"
