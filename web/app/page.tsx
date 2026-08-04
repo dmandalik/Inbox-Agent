@@ -839,7 +839,7 @@ function ChatWidget({
             <h2>Ask me about your inbox</h2>
             <p>
               I read only the emails that match your question, answer in plain language, and cite
-              the ones I used. Everything runs on your local model — nothing leaves this machine.
+              the ones I used. Everything runs on your local model, so nothing leaves this machine.
             </p>
             <div className="chat-suggest">
               {suggestions.map((s) => (
@@ -1172,7 +1172,7 @@ function Reader({
             rows={7}
           />
           <div className="draft-note">
-            Nothing is sent — this is a local suggestion. Copy it into your reply when you are happy
+            Nothing is sent. This is a local suggestion. Copy it into your reply when you are happy
             with it.
           </div>
         </div>
@@ -1275,7 +1275,7 @@ function LabelRail({
             className="label-form-inst"
             value={instructions}
             onChange={(e) => setInstructions(e.target.value)}
-            placeholder="What does this label mean? The assistant uses this to auto-apply it — e.g. anything about money, bills, or invoices."
+            placeholder="What does this label mean? The assistant uses it to apply the label for you, like anything about money, bills, or invoices."
             rows={3}
             aria-label="Label instructions"
           />
@@ -1395,7 +1395,7 @@ function ComposeModal({ open, onClose }: { open: boolean; onClose: () => void })
             </span>
             <input
               className="compose-field"
-              placeholder="…or describe it and let AI draft — e.g. ask Bob to lunch Friday"
+              placeholder="…or describe it and let AI draft, like ask Bob to lunch Friday"
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
               onKeyDown={(e) => {

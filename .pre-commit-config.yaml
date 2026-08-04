@@ -29,8 +29,8 @@ repos:
     rev: v5.0.0
     hooks:
       - id: detect-private-key
-      - id: check-added-large-files # stops accidental data/db dumps
-        args: ["--maxkb=500"]
+      - id: check-added-large-files # stops accidental data/db dumps (README media allowed)
+        args: ["--maxkb=5000"]
       - id: check-yaml
       - id: check-toml
       - id: end-of-file-fixer

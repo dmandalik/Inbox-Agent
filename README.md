@@ -2,22 +2,34 @@
 
 Postwise is an AI assistant for your email. It reads your inbox, sorts it, chats with you about it, and can reply for you. It runs on your own computer, so your mail stays private.
 
-![The Postwise app](docs/ui.png)
+![The Postwise app](docs/hero.png)
+
+## Chat with your inbox
+
+Talk to your email like you would to a person. Ask a question and Postwise answers using your real messages, and it points you to the ones it used. Tell it to star, label, mark as read, or archive, and it just does it. Ask it to reply and it writes a draft, ready for you to send.
+
+![Chatting with the inbox](docs/chat.gif)
+
+## Write and send
+
+Reply to a message or start a brand new one. You can write it yourself, or describe what you want in a sentence and let Postwise draft it. Nothing ever goes out until you press send.
+
+![Writing a new email](docs/compose.png)
 
 ## What it does
 
 - Sorts every email into groups like work, personal, receipts, and spam.
-- Lets you chat with your inbox in plain words. Ask things like "how many unread from my bank" or tell it "star everything from Priya".
-- Drafts and sends replies for you, and writes brand new emails too. Nothing sends until you say so.
+- Lets you chat with your inbox in plain words, and take actions like starring, labeling, and archiving.
+- Drafts and sends replies, and writes brand new emails too.
 - Lets you make your own colored labels and asks the assistant to file mail into them.
-- Flags emails that try to trick the AI, and never follows instructions hidden inside an email.
+- Catches emails that try to trick the AI, and never follows instructions hidden inside a message.
 - Shows your emails with their real look and formatting.
-- Pulls in new mail on its own, and marks things read in Gmail when you read them.
+- Pulls in new mail on its own, and marks things as read in Gmail when you read them.
 - Comes in light or dark mode, with fonts and a logo you can pick.
 
 ## How it works
 
-You connect your Gmail once. Postwise pulls your mail into a small database on your computer and sorts it. When you chat, ask a question, or draft a reply, that runs on a local model through Ollama, so your email never leaves your machine. Sending a reply or marking mail read are the only things that touch Gmail, and sending always waits for your ok.
+You connect your Gmail once. Postwise pulls your mail into a small database on your computer and sorts it. When you chat, ask a question, or draft a reply, that runs on a local model through Ollama, so your email never leaves your machine. Sending a reply or marking mail as read are the only things that touch Gmail, and sending always waits for your ok.
 
 ## Run it
 
